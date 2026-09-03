@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  
   "directories": {
     "lib": "lib"
   },
@@ -16,14 +15,17 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",
+    "@wagmi/core": "^3.6.5",
+    "@web3modal/ethers": "^5.1.11",
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.4.2",
+    "ethers": "^5.8.0",
     "lucide-react": "^1.39.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",

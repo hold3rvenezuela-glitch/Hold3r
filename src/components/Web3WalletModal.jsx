@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, Zap, QrCode, CheckCircle2, ShieldAlert, ArrowRight, ExternalLink, RefreshCw } from 'lucide-react';
+import { Globe, Zap, QrCode, ShieldAlert } from 'lucide-react';
 import { connectWeb3Wallet, isWeb3Available } from '../services/web3';
 
 export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) {
@@ -16,7 +16,7 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
     setErrorMsg('');
     try {
       if (!hasInjected) {
-        throw new Error('No se detectó extensión de navegador (MetaMask / Trust Wallet). Puedes usar la pestaña de Código QR (WalletConnect) o la Wallet Sandbox de prueba.');
+        throw new Error('No se detectó extensión de navegador (MetaMask / Trust Wallet). Puedes usar la pestaña de WalletConnect o la Wallet Sandbox de prueba.');
       }
       const conn = await connectWeb3Wallet();
       onWalletConnected(conn);
@@ -29,7 +29,6 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
   };
 
   const handleSandboxConnect = (network = 'BEP20') => {
-    const prefix = network === 'TRC20' ? 'T' : '0x71C8a';
     const fakeAddress = network === 'TRC20'
       ? 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
       : '0x71C8a9f3B12D04f16E890e72A1B00e00784a923C';
@@ -115,7 +114,6 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
         {/* Tab 1: Direct Injected Wallets */}
         {activeTab === 'wallets' && (
           <div className="space-y-3">
-            {/* MetaMask Option */}
             <button
               type="button"
               onClick={handleInjectedConnect}
@@ -140,7 +138,6 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
               </span>
             </button>
 
-            {/* Trust Wallet Option */}
             <button
               type="button"
               onClick={handleInjectedConnect}
@@ -163,7 +160,6 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
               </span>
             </button>
 
-            {/* Coinbase Wallet Option */}
             <button
               type="button"
               onClick={handleInjectedConnect}
@@ -188,34 +184,29 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
           </div>
         )}
 
-        {/* Tab 2: WalletConnect QR Code Simulation */}
+        {/* Tab 2: WalletConnect Real Integration */}
         {activeTab === 'walletconnect' && (
           <div className="glass-panel p-6 border border-white/10 text-center space-y-4">
             <div className="flex items-center justify-center gap-2 text-xs font-extrabold text-cyan-300 uppercase tracking-wider">
               <QrCode className="w-4 h-4 text-cyan-400" />
-              Escanea con tu Billetera Móvil
+              Conexión Universal WalletConnect
             </div>
 
-            {/* Simulación del Código QR de WalletConnect */}
-            <div className="w-48 h-48 bg-white p-3 rounded-2xl mx-auto flex items-center justify-center shadow-lg border border-cyan-400/50">
-              <svg className="w-full h-full text-neutral-950" viewBox="0 0 100 100" fill="currentColor">
-                <rect width="100" height="100" fill="white" />
-                <path d="M10 10h30v30H10zM60 10h30v30H60zM10 60h30v30H10z" fill="black" />
-                <path d="M20 20h10v10H20zM70 20h10v10H70zM20 70h10v10H20z" fill="white" />
-                <path d="M45 15h10v10H45zM15 45h10v10H15zM45 45h10v10H45zM75 45h10v10H75zM45 75h10v10H45zM75 75h10v10H75z" fill="black" />
-              </svg>
-            </div>
-
-            <p className="text-xs text-neutral-300">
-              Abre <strong>Trust Wallet</strong>, <strong>Rainbow</strong> o <strong>MetaMask Mobile</strong> en tu teléfono y escanea este código.
+            <p className="text-xs text-neutral-300 leading-relaxed">
+              Haz clic en el botón de abajo para desplegar el selector oficial de WalletConnect. Esto abrirá automáticamente MetaMask Mobile, Trust Wallet o cualquier otra app compatible desde tu celular.
             </p>
+
+            {/* Componente nativo oficial de WalletConnect AppKit */}
+            <div className="flex justify-center py-4">
+              <w3m-button />
+            </div>
 
             <button
               type="button"
               onClick={() => handleSandboxConnect('BEP20')}
-              className="btn-secondary text-xs w-full border-cyan-500/30 text-cyan-300"
+              className="btn-secondary text-xs w-full border-cyan-500/30 text-cyan-300 mt-2"
             >
-              Simular Conexión Exitosa desde Móvil
+              Simular Conexión (Sandbox Móvil)
             </button>
           </div>
         )}
