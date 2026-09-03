@@ -3,23 +3,23 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-// 1. Importa WalletConnect
+// 1. Importa WalletConnect Web3Modal
 import { createWeb3Modal, defaultConfig } from '@web3modal/ethers/react';
 
-// 2. Configura tu Project ID y tu red (puedes cambiar mainnet por la red que uses, ej. Polygon o BSC)
-const projectId = '50744bb9d377a5000a6f5d2d2141fbef'
+// 2. Tu Project ID oficial
+const projectId = '50744bb9d377a5000a6f5d2d2141fbef';
 
 const mainnet = {
-  chainId: 1, // Cambia el chainId según tu red (ej: 137 para Polygon, 56 para BSC, etc.)
-  name: 'Ethereum',
-  currency: 'ETH',
-  explorerUrl: 'https://etherscan.io',
-  rpcUrl: 'https://cloudflare-eth.com'
+  chainId: 56, // O la red principal que utilices (ej. 56 para BNB Chain / BSC, 1 para Ethereum)
+  name: 'BNB Smart Chain',
+  currency: 'BNB',
+  explorerUrl: 'https://bscscan.com',
+  rpcUrl: 'https://bsc-dataseed.binance.org/'
 };
 
 const metadata = {
   name: 'Hold3r',
-  description: 'Mi Aplicación Web3',
+  description: 'Aplicación Web3',
   url: window.location.origin,
   icons: ['https://avatars.githubusercontent.com/u/37784886']
 };
