@@ -50,7 +50,7 @@ export async function signUpUser({ email, password, fullName, documentId }) {
   const cleanEmail = (email || '').trim().toLowerCase();
   const assignedRole = cleanEmail === 'hold3rvenezuela@gmail.com' ? 'admin' : 'investor';
 
-  // 1. Crear usuario en auth.users con metadatos completos
+  // 1. Crear usuario en auth.users enviando metadatos exactos esperados por el trigger
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
@@ -66,69 +66,47 @@ export async function signUpUser({ email, password, fullName, documentId }) {
   if (authError) throw authError;
 
   const user = authData.user;
-  if (!user) throw new Error('No se pudo registrar el usuario');
+  if (!user) throw new Error('No se pudo registrar el usuario en Supabase Auth.');
 
-  // 2. Crear o asegurar perfil en public.profiles
-  const profilePayload = {
-    id: user.id,
-    full_name: fullName,
-    document_id: documentId,
-    role: assignedRole,
-    created_at: new Date().toISOString()
-  };
+  // 2. Obtener el perfil creado automáticamente por el trigger de Supabase DB
+  let profile = await getUserProfile(user.id);
 
-  let profileData = null;
-  try {
-    const { data: profile, error: profileError } = await supabase
-      .from(TABLES.PROFILES)
-      .upsert(profilePayload, { onConflict: 'id' })
-      .select()
-      .maybeSingle();
+  // Si el trigger no creó el perfil aún (o RLS/Trigger no activo), realizamos upsert de respaldo
+  if (!profile) {
+    const profilePayload = {
+      id: user.id,
+      full_name: fullName,
+      document_id: documentId,
+      role: assignedRole,
+      created_at: new Date().toISOString()
+    };
 
-    if (profileError) {
-      console.warn('Advertencia al crear perfil en Supabase:', profileError.message);
-    } else {
-      profileData = profile;
+    try {
+      const { data: createdProfile, error: profileError } = await supabase
+        .from(TABLES.PROFILES)
+        .upsert(profilePayload, { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+
+      if (!profileError && createdProfile) {
+        profile = createdProfile;
+      }
+    } catch (err) {
+      console.warn('Fallback al crear perfil manualmente:', err.message);
     }
-  } catch (err) {
-    console.warn('Error durante el upsert del perfil:', err.message);
-  }
 
-  // Si no se obtuvo del upsert, intentamos consultar el perfil generado por el trigger
-  if (!profileData) {
-    profileData = await getUserProfile(user.id);
-  }
-
-  // 3. Crear wallet inicial en public.wallets con un saldo inicial de demostración de $1,000 USDT
-  const walletPayload = {
-    user_id: user.id,
-    usdt_address: generateUsdtAddress('TRC20'),
-    network: 'TRC20',
-    balance: 1000.00,
-    updated_at: new Date().toISOString()
-  };
-
-  let walletData = null;
-  try {
-    const { data: wallet, error: walletError } = await supabase
-      .from(TABLES.WALLETS)
-      .upsert(walletPayload)
-      .select()
-      .maybeSingle();
-
-    if (walletError) {
-      console.warn('Advertencia al crear wallet en Supabase:', walletError.message);
-    } else {
-      walletData = wallet;
+    if (!profile) {
+      profile = profilePayload;
     }
-  } catch (err) {
-    console.warn('Error durante la inserción de la wallet:', err.message);
   }
+
+  // 3. Obtener o verificar la wallet del usuario
+  let wallet = await getUserWallet(user.id);
 
   return {
     user,
-    profile: profileData || profilePayload,
-    wallet: walletData || walletPayload
+    profile,
+    wallet
   };
 }
 
