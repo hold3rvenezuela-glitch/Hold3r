@@ -1,6 +1,6 @@
 /**
  * Servicio Web3 para Conexión de Billeteras, Cambio de Red Automático y Pasarela de Pagos USDT / Crypto.
- * Mapeo estricto de direcciones de Tesorería por Red y Validaciones por Arquitectura.
+ * Mapeo estricto de direcciones de Tesorería por Red, Soporte Móvil y Validaciones por Arquitectura.
  */
 
 // Mapeo Estricto de Direcciones de Tesorería por Red
@@ -42,6 +42,32 @@ export const NETWORKS_CONFIG = {
  */
 export function getTreasuryAddress(network = 'BEP20') {
   return TREASURY_ADDRESSES[network] || TREASURY_ADDRESSES.BEP20;
+}
+
+/**
+ * Detecta si el usuario está navegando desde un dispositivo móvil (Android/iOS).
+ */
+export function isMobileBrowser() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+  return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+}
+
+/**
+ * Genera enlaces profundos (Deep Links) para abrir la dApp en navegadores internos de billeteras.
+ */
+export function getMobileWalletDeepLink(walletName = 'metamask') {
+  if (typeof window === 'undefined') return '#';
+  const currentUrl = window.location.href;
+  const cleanUrl = currentUrl.replace(/^https?:\/\//, '');
+
+  if (walletName === 'metamask') {
+    return `https://metamask.app.link/dapp/${cleanUrl}`;
+  }
+  if (walletName === 'trust') {
+    return `https://link.trustwallet.com/open_url?url=${encodeURIComponent(currentUrl)}`;
+  }
+  return '#';
 }
 
 /**
@@ -96,7 +122,7 @@ export function isWeb3Available() {
 }
 
 /**
- * Solicita a MetaMask cambiar automáticamente a la red correspondiente al selector.
+ * Solicita a la billetera inyectada o proveedor activo cambiar automáticamente a la red deseada.
  * Para redes no-EVM (TRC20, Solana), retorna un indicador especial sin invocar eth_switchEthereumChain.
  */
 export async function switchWeb3Network(networkKey = 'BEP20') {
@@ -105,34 +131,34 @@ export async function switchWeb3Network(networkKey = 'BEP20') {
     return { isNonEVM: true, network: networkKey };
   }
 
-  if (!isWeb3Available()) {
-    throw new Error('No se detectó billetera EVM inyectada para cambiar de red.');
-  }
-
   const targetConfig = NETWORKS_CONFIG[networkKey] || NETWORKS_CONFIG.BEP20;
 
-  try {
-    await window.ethereum.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: targetConfig.chainIdHex }]
-    });
-    return { success: true, network: networkKey };
-  } catch (switchError) {
-    if (switchError.code === 4902) {
-      try {
-        await window.ethereum.request({
-          method: 'wallet_addEthereumChain',
-          params: [targetConfig]
-        });
-        return { success: true, network: networkKey };
-      } catch (addError) {
-        console.error('Error al agregar red:', addError);
-        throw new Error('No se pudo agregar la red a la billetera.');
+  if (isWeb3Available()) {
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetConfig.chainIdHex }]
+      });
+      return { success: true, network: networkKey };
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [targetConfig]
+          });
+          return { success: true, network: networkKey };
+        } catch (addError) {
+          console.error('Error al agregar red:', addError);
+          throw new Error('No se pudo agregar la red a la billetera.');
+        }
       }
+      console.error('Error al cambiar de red:', switchError);
+      throw new Error('Cambio de red rechazado en la billetera.');
     }
-    console.error('Error al cambiar de red:', switchError);
-    throw new Error('Cambio de red rechazado en la billetera.');
   }
+
+  return { requiresWeb3Modal: true, network: networkKey };
 }
 
 /**
@@ -140,7 +166,7 @@ export async function switchWeb3Network(networkKey = 'BEP20') {
  */
 export async function connectWeb3Wallet() {
   if (!isWeb3Available()) {
-    throw new Error('No se detectó ninguna billetera Web3 (MetaMask / Trust Wallet).');
+    throw new Error('No se detectó ninguna billetera Web3 (MetaMask / Trust Wallet). Usa la opción WalletConnect en dispositivos móviles.');
   }
 
   try {
@@ -189,7 +215,7 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20' }) {
 
   // Redes EVM: BEP20 y ERC20
   if (!isWeb3Available()) {
-    throw new Error('Billetera Web3 EVM no disponible para firmar la transacción.');
+    throw new Error('Billetera Web3 EVM no inyectada. Usa WalletConnect o abre la app desde el navegador interno de tu wallet.');
   }
 
   const accounts = await window.ethereum.request({ method: 'eth_accounts' });

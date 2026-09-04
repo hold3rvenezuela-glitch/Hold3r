@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, QrCode, ShieldAlert, Cpu, LogOut, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react';
+import { Globe, QrCode, ShieldAlert, Cpu, LogOut, Copy, Check, ExternalLink, RefreshCw, Smartphone } from 'lucide-react';
 import { useWeb3Modal, useWeb3ModalAccount, useDisconnect } from '@web3modal/ethers/react';
-import { connectWeb3Wallet, isWeb3Available } from '../services/web3';
+import { connectWeb3Wallet, isWeb3Available, isMobileBrowser, getMobileWalletDeepLink } from '../services/web3';
 
 export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) {
   const [activeTab, setActiveTab] = useState('walletconnect'); // 'walletconnect' | 'injected'
@@ -12,6 +12,9 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
   const { open } = useWeb3Modal();
   const { address, chainId, isConnected } = useWeb3ModalAccount();
   const { disconnect } = useDisconnect();
+
+  const isMobile = isMobileBrowser();
+  const hasInjected = isWeb3Available();
 
   // Escucha conexiones de WalletConnect en tiempo real
   useEffect(() => {
@@ -26,8 +29,6 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
   }, [isOpen, isConnected, address, chainId]);
 
   if (!isOpen) return null;
-
-  const hasInjected = isWeb3Available();
 
   const handleCopyAddress = () => {
     if (address) {
@@ -53,7 +54,7 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
     setErrorMsg('');
     try {
       if (!hasInjected) {
-        throw new Error('No se detectó extensión de navegador Web3 (MetaMask / Trust Wallet). Usa la opción de WalletConnect para escanear el código QR con tu billetera móvil.');
+        throw new Error('No se detectó extensión Web3 en tu navegador actual. Si estás en móvil, utiliza la pestaña de WalletConnect o abre HOLD3R en el navegador interno de tu billetera.');
       }
       const conn = await connectWeb3Wallet();
       onWalletConnected(conn);
@@ -77,7 +78,7 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md pt-24 pb-12 overflow-y-auto animate-fade-in">
-      <div className="glass-panel w-full max-w-lg p-6 sm:p-8 border border-cyan-500/40 shadow-2xl relative max-h-[85vh] overflow-y-auto my-auto">
+      <div className="glass-panel w-full max-w-lg p-6 sm:p-8 border border-cyan-500/40 shadow-2xl relative max-h-[88vh] overflow-y-auto my-auto">
         
         {/* Glow Background */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -91,7 +92,7 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
         </button>
 
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
             <Globe className="w-5 h-5" />
           </div>
@@ -102,6 +103,37 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
             </p>
           </div>
         </div>
+
+        {/* Mobile Browser Helpful Guide Banner */}
+        {isMobile && !hasInjected && (
+          <div className="p-4 rounded-2xl mb-5 bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 text-xs space-y-2.5 animate-fade-in">
+            <div className="flex items-center gap-2 font-bold text-cyan-300">
+              <Smartphone className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span>Acceso Móvil Recomendado</span>
+            </div>
+            <p className="text-[11px] text-neutral-300 leading-relaxed">
+              Estás en un navegador móvil estándar (sin inyección Web3 directa). Para conectar fácilmente tu billetera:
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <a 
+                href={getMobileWalletDeepLink('metamask')} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-orange-300 text-[11px] font-bold py-2.5 px-2 rounded-xl text-center flex items-center justify-center gap-1.5 transition-colors"
+              >
+                🦊 Abrir en MetaMask
+              </a>
+              <a 
+                href={getMobileWalletDeepLink('trust')} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold py-2.5 px-2 rounded-xl text-center flex items-center justify-center gap-1.5 transition-colors"
+              >
+                🛡️ Abrir en Trust Wallet
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* Active Connected Wallet Card */}
         {isConnected && address ? (

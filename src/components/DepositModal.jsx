@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Wallet, RefreshCw, Check, Copy, ExternalLink, HelpCircle, 
-  Info, AlertTriangle, ShieldCheck, ArrowRight, Globe
+  Info, AlertTriangle, ShieldCheck, ArrowRight, Globe, Smartphone
 } from 'lucide-react';
-import { useWeb3ModalAccount } from '@web3modal/ethers/react';
+import { useWeb3ModalAccount, useWeb3Modal } from '@web3modal/ethers/react';
 import { 
   sendUsdtWeb3Transfer, verifyBlockchainTxHash, 
   switchWeb3Network, getTreasuryAddress, 
-  validateTxHashForNetwork, validateAddressForNetwork 
+  validateTxHashForNetwork, validateAddressForNetwork,
+  isMobileBrowser, getMobileWalletDeepLink, isWeb3Available
 } from '../services/web3';
 
 const NETWORKS = [
@@ -33,12 +34,15 @@ export default function DepositModal({
 
   // Integración en tiempo real con WalletConnect / Ethers Web3Modal
   const { address: wcAddress, chainId: wcChainId, isConnected: wcIsConnected } = useWeb3ModalAccount();
+  const { open } = useWeb3Modal();
 
   const activeWalletAddress = (wcIsConnected && wcAddress) ? wcAddress : (web3Wallet?.address || null);
   const activeChainId = (wcIsConnected && wcChainId) ? wcChainId : (web3Wallet?.chainId || null);
   
   const currentNetworkConfig = NETWORKS.find(n => n.id === selectedNetwork) || NETWORKS[0];
   const currentTreasury = getTreasuryAddress(selectedNetwork);
+  const isMobile = isMobileBrowser();
+  const hasInjected = isWeb3Available();
 
   // Limpiar errores o estados al alternar red o abrir modal
   useEffect(() => {
@@ -63,10 +67,25 @@ export default function DepositModal({
       const result = await switchWeb3Network(targetNet);
       if (result.isNonEVM) {
         setDepositError(`La red ${targetNet} es de arquitectura No-EVM. Realiza la transferencia desde tu wallet nativa.`);
+      } else if (result.requiresWeb3Modal) {
+        if (open) {
+          await open({ view: 'Networks' });
+        } else if (onOpenWeb3Modal) {
+          onOpenWeb3Modal();
+        }
       }
     } catch (err) {
       console.error('Error al solicitar cambio de red:', err);
-      setDepositError(err.message || 'Fallo al solicitar cambio de red a la billetera.');
+      // Fallback a modal Web3Modal
+      if (open) {
+        try {
+          await open({ view: 'Networks' });
+        } catch (mErr) {
+          setDepositError(err.message || 'Fallo al solicitar cambio de red a la billetera.');
+        }
+      } else {
+        setDepositError(err.message || 'Fallo al solicitar cambio de red a la billetera.');
+      }
     } finally {
       setSwitchingNetwork(false);
     }
@@ -92,6 +111,7 @@ export default function DepositModal({
 
         if (!activeWalletAddress) {
           if (onOpenWeb3Modal) onOpenWeb3Modal();
+          else if (open) open();
           throw new Error('Conecta tu Billetera Web3 para firmar la transferencia directa.');
         }
 
@@ -130,7 +150,7 @@ export default function DepositModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto animate-fade-in">
-      <div className="glass-panel w-full max-w-lg p-6 sm:p-7 border border-emerald-500/30 shadow-2xl relative my-auto">
+      <div className="glass-panel w-full max-w-lg p-6 sm:p-7 border border-emerald-500/30 shadow-2xl relative my-auto max-h-[90vh] overflow-y-auto">
         
         {/* Glow Background Accent */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -157,8 +177,39 @@ export default function DepositModal({
           </div>
         </div>
 
+        {/* Mobile Browser Helpful Guide Banner */}
+        {isMobile && !hasInjected && (
+          <div className="p-3.5 rounded-2xl my-3 bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 text-xs space-y-2 animate-fade-in">
+            <div className="flex items-center gap-2 font-bold text-cyan-300">
+              <Smartphone className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span>Conexión Móvil Recomendada</span>
+            </div>
+            <p className="text-[11px] text-neutral-300 leading-relaxed">
+              Estás navegando desde un dispositivo móvil. Usa <strong>WalletConnect Universal</strong> o abre HOLD3R en el explorador interno Web3 de tu app de billetera:
+            </p>
+            <div className="flex items-center gap-2 pt-1">
+              <a 
+                href={getMobileWalletDeepLink('metamask')} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-orange-300 text-[11px] font-bold py-2 px-2 rounded-xl text-center flex items-center justify-center gap-1 transition-colors"
+              >
+                🦊 Abrir en MetaMask
+              </a>
+              <a 
+                href={getMobileWalletDeepLink('trust')} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="flex-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold py-2 px-2 rounded-xl text-center flex items-center justify-center gap-1 transition-colors"
+              >
+                🛡️ Abrir en Trust Wallet
+              </a>
+            </div>
+          </div>
+        )}
+
         {/* Progress Tracker */}
-        <div className="grid grid-cols-3 gap-2 my-4 text-center text-[11px]">
+        <div className="grid grid-cols-3 gap-2 my-3 text-center text-[11px]">
           {['1. Seleccionar Red', '2. Indicar Monto', '3. Transmitir / TxID'].map((step, i) => {
             const isDone = (i === 0 && selectedNetwork)
                         || (i === 1 && Number(depositAmount) > 0)
@@ -319,7 +370,10 @@ export default function DepositModal({
                   {currentNetworkConfig.type === 'EVM' && (
                     <button 
                       type="button" 
-                      onClick={onOpenWeb3Modal} 
+                      onClick={() => {
+                        if (onOpenWeb3Modal) onOpenWeb3Modal();
+                        else if (open) open();
+                      }} 
                       className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all shrink-0 ml-2"
                     >
                       {activeWalletAddress ? 'Cambiar' : 'Conectar'}
