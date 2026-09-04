@@ -45,16 +45,25 @@ export async function getCurrentSession() {
   return session;
 }
 
+// Helper para obtener la URL de redirección oficial de forma dinámica
+export function getRedirectUrl() {
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    return window.location.origin;
+  }
+  return 'https://hold3r.vercel.app';
+}
+
 export async function signUpUser({ email, password, fullName, documentId }) {
   // Determinar rol automáticamente según el correo electrónico
   const cleanEmail = (email || '').trim().toLowerCase();
   const assignedRole = cleanEmail === 'hold3rvenezuela@gmail.com' ? 'admin' : 'investor';
 
-  // 1. Crear usuario en auth.users enviando metadatos exactos esperados por el trigger
+  // 1. Crear usuario en auth.users enviando metadatos exactos y la URL de redirección oficial
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      emailRedirectTo: getRedirectUrl(),
       data: {
         full_name: fullName,
         document_id: documentId,
