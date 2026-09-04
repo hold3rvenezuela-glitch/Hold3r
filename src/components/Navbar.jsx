@@ -1,23 +1,11 @@
 import React, { useState } from 'react';
-
-// Redes soportadas para la pasarela de pagos USDT
-const NETWORKS = [
-  { id: 'BEP20', label: 'BEP20 · BNB' },
-  { id: 'ERC20', label: 'ERC20 · ETH' },
-  { id: 'TRC20', label: 'TRC20 · Tron' },
-  { id: 'SOLANA', label: 'SOL · Solana' },
-];
 import { 
   Shield, Wallet, PlusCircle, User, LogOut, Layers, Vote, 
-  Building2, Globe, ExternalLink, Check, HelpCircle, 
-  RefreshCw, Info, Copy
+  Building2, Globe, ExternalLink, Check, RefreshCw
 } from 'lucide-react';
 import { useWeb3ModalAccount } from '@web3modal/ethers/react';
 import Web3WalletModal from './Web3WalletModal';
-import { 
-  sendUsdtWeb3Transfer, verifyBlockchainTxHash, 
-  switchWeb3Network, getTreasuryAddress 
-} from '../services/web3';
+import DepositModal from './DepositModal';
 
 export default function Navbar({ 
   currentTab, setCurrentTab, userProfile, wallet, 
@@ -27,16 +15,6 @@ export default function Navbar({
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWeb3Modal, setShowWeb3Modal] = useState(false);
   const [web3Wallet, setWeb3Wallet] = useState(null);
-  const [depositMode, setDepositMode] = useState('direct');
-  const [depositAmount, setDepositAmount] = useState('500');
-  const [selectedNetwork, setSelectedNetwork] = useState('BEP20');
-  const [inputTxHash, setInputTxHash] = useState('');
-  const [verifyingTx, setVerifyingTx] = useState(false);
-  const [txSuccess, setTxSuccess] = useState(null);
-  const [depositError, setDepositError] = useState('');
-  const [switchingNetwork, setSwitchingNetwork] = useState(false);
-  const [copied, setCopied] = useState(false);
-
   // Integración en tiempo real con WalletConnect / Web3Modal Account
   const { address: wcAddress, chainId: wcChainId, isConnected: wcIsConnected } = useWeb3ModalAccount();
 
@@ -45,70 +23,6 @@ export default function Navbar({
   const activeShortAddress = activeWalletAddress
     ? `${activeWalletAddress.substring(0, 6)}...${activeWalletAddress.substring(activeWalletAddress.length - 4)}`
     : null;
-
-  const currentTreasury = getTreasuryAddress(selectedNetwork);
-
-  const handleCopyTreasury = () => {
-    navigator.clipboard.writeText(currentTreasury);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleSwitchNetwork = async (targetNet = selectedNetwork) => {
-    setSwitchingNetwork(true);
-    setDepositError('');
-    try {
-      await switchWeb3Network(targetNet);
-      const chainName = targetNet === 'ERC20' ? 'ERC20 (Ethereum)' : 'BEP20 (BNB Chain)';
-      setWeb3Wallet({
-        address: activeWalletAddress || '0x...',
-        chainId: targetNet === 'ERC20' ? 1 : 56,
-        networkName: chainName,
-        shortAddress: activeShortAddress || ''
-      });
-    } catch (err) {
-      setDepositError(err.message || 'Fallo al solicitar cambio de red a la billetera.');
-    } finally {
-      setSwitchingNetwork(false);
-    }
-  };
-
-  const handleSubmitDeposit = async (e) => {
-    e.preventDefault();
-    setDepositError('');
-    setVerifyingTx(true);
-    try {
-      if (!depositAmount || Number(depositAmount) <= 0) throw new Error('Ingresa un monto válido.');
-
-      if (depositMode === 'direct') {
-        if (!activeWalletAddress) {
-          setShowWeb3Modal(true);
-          setVerifyingTx(false);
-          return;
-        }
-        const txRes = await sendUsdtWeb3Transfer({ amountUsdt: Number(depositAmount), network: selectedNetwork });
-        setTxSuccess(txRes);
-        onDepositUsdt(Number(depositAmount));
-      } else {
-        if (!inputTxHash || inputTxHash.length < 15) throw new Error('Ingresa un TxID válido.');
-        const verified = await verifyBlockchainTxHash(inputTxHash, selectedNetwork);
-        setTxSuccess(verified);
-        onDepositUsdt(Number(depositAmount));
-      }
-    } catch (err) {
-      setDepositError(err.message || 'Error al procesar la transferencia.');
-    } finally {
-      setVerifyingTx(false);
-    }
-  };
-
-  // Redes con label y emoji limpio
-  const NETWORKS = [
-    { id: 'BEP20', label: 'BEP20 · BNB Chain' },
-    { id: 'ERC20', label: 'ERC20 · Ethereum' },
-    { id: 'TRC20', label: 'TRC20 · Tron' },
-    { id: 'SOLANA', label: 'SOL · Solana' },
-  ];
 
   return (
     <>
@@ -326,202 +240,14 @@ export default function Navbar({
         onWalletConnected={conn => setWeb3Wallet(conn)}
       />
 
-      {/* ── DEPOSIT MODAL — class modal-overlay garantiza z:999999 ── */}
-      {showDepositModal && (
-        <div
-          className="modal-overlay flex items-start justify-center overflow-y-auto"
-          style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)' }}
-          onClick={e => { if (e.target === e.currentTarget) { setShowDepositModal(false); setTxSuccess(null); setDepositError(''); } }}
-        >
-          <div
-            className="relative w-full max-w-lg rounded-2xl p-6 sm:p-8 shadow-2xl my-20 mx-4 animate-fade-in"
-            style={{ background: '#111715', border: '1px solid rgba(0,255,136,0.20)' }}
-          >
-            {/* Close */}
-            <button
-              onClick={() => { setShowDepositModal(false); setTxSuccess(null); setDepositError(''); }}
-              className="absolute top-4 right-4 text-xl font-bold transition-colors"
-              style={{ color: '#6b7280' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
-              onMouseLeave={e => e.currentTarget.style.color = '#6b7280'}
-            >✕</button>
-
-            <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-1">
-              <Wallet className="w-5 h-5" style={{ color: '#00FF88' }} />
-              Pasarela de Pagos USDT
-            </h3>
-            <p className="text-xs mb-5" style={{ color: '#6b7280' }}>
-              Transfiere USDT directamente a la tesorería de HOLD3R.
-            </p>
-
-            {/* Paso a paso */}
-            <div className="grid grid-cols-3 gap-2 mb-5 text-center text-[11px]">
-              {['Seleccionar Red', 'Indicar Monto', 'Firmar / Enviar'].map((step, i) => {
-                const done = (i === 0 && (web3Wallet || ['TRC20','SOLANA'].includes(selectedNetwork)))
-                          || (i === 1 && Number(depositAmount) > 0)
-                          || (i === 2 && !!txSuccess);
-                return (
-                  <div key={i} className="py-2 px-1 rounded-xl" style={{
-                    background: done ? 'rgba(0,255,136,0.08)' : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${done ? 'rgba(0,255,136,0.25)' : 'rgba(255,255,255,0.06)'}`,
-                    color: done ? '#00FF88' : '#6b7280'
-                  }}>
-                    <span className="font-bold block">Paso {i + 1}</span>
-                    <span>{step}</span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Mode switcher */}
-            <div className="flex gap-1 p-1 rounded-xl mb-5" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-              {[['direct','⚡ Transmitir'],['txid','🔍 Verificar TxID']].map(([m,lbl]) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setDepositMode(m)}
-                  className="flex-1 py-2 text-xs font-bold rounded-lg transition-all"
-                  style={depositMode === m
-                    ? { background: 'rgba(0,255,136,0.12)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.30)' }
-                    : { color: '#6b7280' }
-                  }
-                >{lbl}</button>
-              ))}
-            </div>
-
-            {/* Network Selector — todos iguales, activo en verde */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2" style={{ color: '#a1a1a1' }}>Red Blockchain:</label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {NETWORKS.map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setSelectedNetwork(id)}
-                    className="py-2 px-2 text-xs font-bold rounded-xl transition-all"
-                    style={selectedNetwork === id
-                      ? { background: 'rgba(0,255,136,0.12)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.30)' }
-                      : { background: 'rgba(255,255,255,0.03)', color: '#6b7280', border: '1px solid rgba(255,255,255,0.08)' }
-                    }
-                  >{label}</button>
-                ))}
-              </div>
-            </div>
-
-            {/* Aviso cambio de red MetaMask / Web3 */}
-            {activeWalletAddress && selectedNetwork === 'BEP20' && activeChainId !== 56 && (
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl mb-4 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#a1a1a1' }}>
-                <div className="flex items-center gap-2">
-                  <Info className="w-4 h-4 shrink-0" style={{ color: '#00FF88' }} />
-                  <span>Tu billetera no está en BNB Chain (Chain ID: 56).</span>
-                </div>
-                <button type="button" onClick={() => handleSwitchNetwork('BEP20')} disabled={switchingNetwork} className="btn-primary text-[11px] py-1.5 px-3">
-                  <RefreshCw className={`w-3.5 h-3.5 ${switchingNetwork ? 'animate-spin' : ''}`} />
-                  {switchingNetwork ? 'Solicitando...' : 'Cambiar Red'}
-                </button>
-              </div>
-            )}
-            {activeWalletAddress && selectedNetwork === 'ERC20' && activeChainId !== 1 && (
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl mb-4 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#a1a1a1' }}>
-                <div className="flex items-center gap-2">
-                  <Info className="w-4 h-4 shrink-0" style={{ color: '#00FF88' }} />
-                  <span>Tu billetera no está en Ethereum Mainnet (Chain ID: 1).</span>
-                </div>
-                <button type="button" onClick={() => handleSwitchNetwork('ERC20')} disabled={switchingNetwork} className="btn-primary text-[11px] py-1.5 px-3">
-                  <RefreshCw className={`w-3.5 h-3.5 ${switchingNetwork ? 'animate-spin' : ''}`} />
-                  {switchingNetwork ? 'Solicitando...' : 'Cambiar Red'}
-                </button>
-              </div>
-            )}
-
-            {/* Error */}
-            {depositError && (
-              <div className="text-xs p-3 rounded-xl mb-4 font-medium" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171' }}>
-                ⚠️ {depositError}
-              </div>
-            )}
-
-            {/* Confirmación TxID */}
-            {txSuccess && (
-              <div className="p-4 rounded-2xl space-y-2 mb-4 animate-fade-in" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.25)' }}>
-                <div className="flex items-center gap-2 font-bold text-sm" style={{ color: '#00FF88' }}>
-                  <Check className="w-5 h-5 shrink-0" /> Depósito Confirmado
-                </div>
-                <p className="text-[11px] font-mono break-all p-2.5 rounded-xl" style={{ color: '#a1a1a1', background: 'rgba(0,0,0,0.3)' }}>
-                  TxID: <span className="text-white font-bold">{txSuccess.txHash}</span>
-                </p>
-                {txSuccess.explorerUrl && (
-                  <a href={txSuccess.explorerUrl} target="_blank" rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold underline"
-                    style={{ color: '#00FF88' }}
-                  >
-                    Ver en Explorador Blockchain <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmitDeposit} className="space-y-4">
-              {depositMode === 'direct' ? (
-                <>
-                  {/* Origen */}
-                  <div>
-                    <label className="block text-xs font-semibold mb-1.5" style={{ color: '#a1a1a1' }}>Billetera de Origen:</label>
-                    <div className="flex items-center justify-between p-2.5 rounded-xl text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                      <span className="font-mono" style={{ color: activeWalletAddress ? '#00FF88' : '#6b7280' }}>
-                        {activeWalletAddress ? `${activeShortAddress} · ${activeChainId === 1 ? 'ERC20 (Ethereum)' : 'BEP20 (BNB Chain)'}` : 'Sin wallet conectada'}
-                      </span>
-                      <button type="button" onClick={() => setShowWeb3Modal(true)} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ background: 'rgba(0,255,136,0.10)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.25)' }}>
-                        {activeWalletAddress ? 'Cambiar Wallet' : 'Conectar Wallet'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Tesorería */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-semibold" style={{ color: '#a1a1a1' }}>Tesorería HOLD3R ({selectedNetwork}):</label>
-                      <button type="button" onClick={handleCopyTreasury} className="text-[10px] font-bold flex items-center gap-1" style={{ color: '#00FF88' }}>
-                        <Copy className="w-3 h-3" />{copied ? '¡Copiado!' : 'Copiar'}
-                      </button>
-                    </div>
-                    <div className="p-3 rounded-xl text-xs font-mono font-bold break-all" style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.20)', color: '#00FF88' }}>
-                      {currentTreasury}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: '#a1a1a1' }}>Hash de Transacción (TxID):</label>
-                  <input type="text" required value={inputTxHash} onChange={e => setInputTxHash(e.target.value)} placeholder="0x9a8f4c21..." className="w-full p-2.5 text-xs rounded-xl font-mono" />
-                </div>
-              )}
-
-              {/* Monto */}
-              <div>
-                <label className="block text-xs font-semibold mb-1.5" style={{ color: '#a1a1a1' }}>Monto (USDT):</label>
-                <input type="number" min="10" step="10" required value={depositAmount} onChange={e => setDepositAmount(e.target.value)} placeholder="500" className="w-full p-3 text-lg font-bold font-mono rounded-xl" />
-              </div>
-
-              {/* Glosario */}
-              <div className="p-3 rounded-xl text-[11px] space-y-1" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: '#6b7280' }}>
-                <div className="flex items-center gap-1.5 font-bold mb-1" style={{ color: '#00FF88' }}>
-                  <HelpCircle className="w-3.5 h-3.5" /> Glosario rápido
-                </div>
-                <p><strong className="text-white">Gas Fee:</strong> Comisión pequeña en BNB/ETH/TRX cobrada por la blockchain al procesar la transferencia.</p>
-                <p><strong className="text-white">Tesorería:</strong> Billetera corporativa HOLD3R que acredita tu saldo en plataforma tras confirmar el depósito.</p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-1">
-                <button type="button" onClick={() => setShowDepositModal(false)} className="btn-secondary text-xs">Cancelar</button>
-                <button type="submit" disabled={verifyingTx} className="btn-primary text-xs">
-                  {verifyingTx ? 'Procesando...' : depositMode === 'direct' ? 'Transmitir Transacción' : 'Confirmar con TxID'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* ── DEPOSIT MODAL PASARELA USDT MULTI-RED ── */}
+      <DepositModal
+        isOpen={showDepositModal}
+        onClose={() => setShowDepositModal(false)}
+        onDepositUsdt={onDepositUsdt}
+        web3Wallet={web3Wallet}
+        onOpenWeb3Modal={() => setShowWeb3Modal(true)}
+      />
     </>
   );
 }

@@ -1,6 +1,6 @@
 /**
  * Servicio Web3 para Conexión de Billeteras, Cambio de Red Automático y Pasarela de Pagos USDT / Crypto.
- * Mapeo estricto de direcciones de Tesorería por Red.
+ * Mapeo estricto de direcciones de Tesorería por Red y Validaciones por Arquitectura.
  */
 
 // Mapeo Estricto de Direcciones de Tesorería por Red
@@ -45,6 +45,50 @@ export function getTreasuryAddress(network = 'BEP20') {
 }
 
 /**
+ * Valida el formato de dirección de billetera según el ecosistema/red seleccionada
+ */
+export function validateAddressForNetwork(address, network = 'BEP20') {
+  if (!address || typeof address !== 'string') return false;
+  const cleanAddr = address.trim();
+
+  if (network === 'BEP20' || network === 'ERC20') {
+    // EVM: Dirección hex de 42 caracteres iniciando en 0x
+    return /^0x[a-fA-F0-9]{40}$/.test(cleanAddr);
+  }
+  if (network === 'TRC20') {
+    // TRON: Dirección Base58 de 34 caracteres iniciando en T
+    return /^T[a-zA-Z0-9]{33}$/.test(cleanAddr);
+  }
+  if (network === 'SOLANA') {
+    // Solana: Dirección Base58 de 32 a 44 caracteres
+    return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(cleanAddr);
+  }
+  return false;
+}
+
+/**
+ * Valida el formato del Hash de Transacción (TxID) según la red seleccionada
+ */
+export function validateTxHashForNetwork(txHash, network = 'BEP20') {
+  if (!txHash || typeof txHash !== 'string') return false;
+  const cleanTx = txHash.trim();
+
+  if (network === 'BEP20' || network === 'ERC20') {
+    // EVM: 64 caracteres hex (con o sin prefijo 0x)
+    return /^(0x)?[a-fA-F0-9]{64}$/i.test(cleanTx);
+  }
+  if (network === 'TRC20') {
+    // TRON: 64 caracteres hex
+    return /^[a-fA-F0-9]{64}$/i.test(cleanTx);
+  }
+  if (network === 'SOLANA') {
+    // Solana Signature: Base58 entre 64 y 90 caracteres
+    return /^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(cleanTx);
+  }
+  return cleanTx.length >= 20;
+}
+
+/**
  * Detecta si el navegador posee una wallet Web3 inyectada (MetaMask / Trust Wallet)
  */
 export function isWeb3Available() {
@@ -52,14 +96,17 @@ export function isWeb3Available() {
 }
 
 /**
- * Solicita a MetaMask cambiar automáticamente a la red correspondiente al selector
+ * Solicita a MetaMask cambiar automáticamente a la red correspondiente al selector.
+ * Para redes no-EVM (TRC20, Solana), retorna un indicador especial sin invocar eth_switchEthereumChain.
  */
 export async function switchWeb3Network(networkKey = 'BEP20') {
-  if (!isWeb3Available()) return false;
-
   // Tron y Solana usan billeteras o pasarelas independientes de EVM
   if (networkKey === 'TRC20' || networkKey === 'SOLANA') {
-    return true;
+    return { isNonEVM: true, network: networkKey };
+  }
+
+  if (!isWeb3Available()) {
+    throw new Error('No se detectó billetera EVM inyectada para cambiar de red.');
   }
 
   const targetConfig = NETWORKS_CONFIG[networkKey] || NETWORKS_CONFIG.BEP20;
@@ -69,7 +116,7 @@ export async function switchWeb3Network(networkKey = 'BEP20') {
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: targetConfig.chainIdHex }]
     });
-    return true;
+    return { success: true, network: networkKey };
   } catch (switchError) {
     if (switchError.code === 4902) {
       try {
@@ -77,7 +124,7 @@ export async function switchWeb3Network(networkKey = 'BEP20') {
           method: 'wallet_addEthereumChain',
           params: [targetConfig]
         });
-        return true;
+        return { success: true, network: networkKey };
       } catch (addError) {
         console.error('Error al agregar red:', addError);
         throw new Error('No se pudo agregar la red a la billetera.');
@@ -125,12 +172,24 @@ export async function connectWeb3Wallet() {
 }
 
 /**
- * Ejecuta y firma la llamada al método transfer(address recipient, uint256 amount)
- * enviando exactamente los fondos a la dirección de tesorería asignada a la red elegida.
+ * Ejecuta y firma la llamada al contrato USDT según la arquitectura elegida.
  */
 export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20' }) {
+  const amountNumber = Number(amountUsdt);
+  if (isNaN(amountNumber) || amountNumber <= 0) {
+    throw new Error('El monto en USDT debe ser mayor a 0.');
+  }
+
+  const targetTreasury = getTreasuryAddress(network);
+
+  // Redes No-EVM: TRON y SOLANA
+  if (network === 'TRC20' || network === 'SOLANA') {
+    throw new Error(`Para la red ${network}, transfiere directamente los USDT a la tesorería nativa (${targetTreasury}) y confirma la operación con tu TxID en la pestaña 'Verificar TxID'.`);
+  }
+
+  // Redes EVM: BEP20 y ERC20
   if (!isWeb3Available()) {
-    throw new Error('Billetera Web3 no disponible para firmar la transacción.');
+    throw new Error('Billetera Web3 EVM no disponible para firmar la transacción.');
   }
 
   const accounts = await window.ethereum.request({ method: 'eth_accounts' });
@@ -139,15 +198,8 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20' }) {
   }
 
   const fromAddress = accounts[0];
-  const amountNumber = Number(amountUsdt);
-  if (isNaN(amountNumber) || amountNumber <= 0) {
-    throw new Error('El monto en USDT debe ser mayor a 0.');
-  }
 
-  // Dirección de Tesorería exacta para la red seleccionada
-  const targetTreasury = getTreasuryAddress(network);
-
-  // Contrato Inteligente USDT para EVM (BEP20 o ERC20)
+  // Contrato Inteligente USDT para EVM
   const contractAddress = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
   
   // Selector del método ERC20/BEP20: transfer(address,uint256) -> 0xa9059cbb
@@ -190,11 +242,15 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20' }) {
 }
 
 /**
- * Verifica el Hash de Transacción (TxID) en la blockchain según la red elegida
+ * Verifica el Hash de Transacción (TxID) en la blockchain según la red elegida con validaciones nativas.
  */
 export async function verifyBlockchainTxHash(txHash, network = 'BEP20') {
-  if (!txHash || txHash.trim().length < 20) {
-    throw new Error('El Hash de Transacción (TxID) debe tener un formato válido de la red seleccionada.');
+  if (!validateTxHashForNetwork(txHash, network)) {
+    let expectedFormat = '64 caracteres hexadecimales (ej. 0x...)';
+    if (network === 'TRC20') expectedFormat = '64 caracteres hexadecimales de Tron';
+    else if (network === 'SOLANA') expectedFormat = 'Firma Base58 de Solana';
+    
+    throw new Error(`El TxID ingresado no tiene un formato válido para la red ${network}. Formato esperado: ${expectedFormat}.`);
   }
 
   const cleanTx = txHash.trim();
