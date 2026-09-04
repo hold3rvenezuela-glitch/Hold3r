@@ -12,6 +12,7 @@ import {
   Building2, Globe, ExternalLink, Check, HelpCircle, 
   RefreshCw, Info, Copy
 } from 'lucide-react';
+import { useWeb3ModalAccount } from '@web3modal/ethers/react';
 import Web3WalletModal from './Web3WalletModal';
 import { 
   sendUsdtWeb3Transfer, verifyBlockchainTxHash, 
@@ -36,6 +37,15 @@ export default function Navbar({
   const [switchingNetwork, setSwitchingNetwork] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Integración en tiempo real con WalletConnect / Web3Modal Account
+  const { address: wcAddress, chainId: wcChainId, isConnected: wcIsConnected } = useWeb3ModalAccount();
+
+  const activeWalletAddress = (wcIsConnected && wcAddress) ? wcAddress : (web3Wallet?.address || null);
+  const activeChainId = (wcIsConnected && wcChainId) ? wcChainId : (web3Wallet?.chainId || null);
+  const activeShortAddress = activeWalletAddress
+    ? `${activeWalletAddress.substring(0, 6)}...${activeWalletAddress.substring(activeWalletAddress.length - 4)}`
+    : null;
+
   const currentTreasury = getTreasuryAddress(selectedNetwork);
 
   const handleCopyTreasury = () => {
@@ -50,9 +60,14 @@ export default function Navbar({
     try {
       await switchWeb3Network(targetNet);
       const chainName = targetNet === 'ERC20' ? 'ERC20 (Ethereum)' : 'BEP20 (BNB Chain)';
-      setWeb3Wallet(prev => prev ? { ...prev, chainId: targetNet === 'ERC20' ? 1 : 56, networkName: chainName } : null);
+      setWeb3Wallet({
+        address: activeWalletAddress || '0x...',
+        chainId: targetNet === 'ERC20' ? 1 : 56,
+        networkName: chainName,
+        shortAddress: activeShortAddress || ''
+      });
     } catch (err) {
-      setDepositError(err.message || 'Fallo al cambiar de red.');
+      setDepositError(err.message || 'Fallo al solicitar cambio de red a la billetera.');
     } finally {
       setSwitchingNetwork(false);
     }
@@ -66,7 +81,7 @@ export default function Navbar({
       if (!depositAmount || Number(depositAmount) <= 0) throw new Error('Ingresa un monto válido.');
 
       if (depositMode === 'direct') {
-        if (!web3Wallet) {
+        if (!activeWalletAddress) {
           setShowWeb3Modal(true);
           setVerifyingTx(false);
           return;
@@ -164,13 +179,13 @@ export default function Navbar({
             <button
               onClick={() => setShowWeb3Modal(true)}
               className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
-              style={web3Wallet
+              style={activeWalletAddress
                 ? { background: 'rgba(0,255,136,0.08)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.25)' }
                 : { background: 'transparent', color: '#6b7280', border: '1px solid rgba(255,255,255,0.08)' }
               }
             >
               <Globe className="w-3.5 h-3.5" />
-              {web3Wallet ? <span className="font-mono">{web3Wallet.shortAddress}</span> : 'Conectar Wallet'}
+              {activeWalletAddress ? <span className="font-mono">{activeShortAddress}</span> : 'Conectar Wallet'}
             </button>
 
             {userProfile ? (
@@ -243,15 +258,28 @@ export default function Navbar({
 
                         {/* Actions */}
                         <div className="p-2 space-y-0.5">
+                          {userProfile?.role === 'admin' && (
+                            <button
+                              onClick={() => { setCurrentTab('admin'); setShowProfileMenu(false); }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl transition-colors text-left"
+                              style={{ color: '#00FF88' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,136,0.07)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <PlusCircle className="w-4 h-4 shrink-0" />
+                              Oficina Virtual Admin
+                            </button>
+                          )}
+
                           <button
                             onClick={() => { setShowWeb3Modal(true); setShowProfileMenu(false); }}
                             className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl transition-colors text-left"
-                            style={{ color: '#00FF88' }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,136,0.07)'}
+                            style={{ color: activeWalletAddress ? '#00FF88' : '#a1a1a1' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                           >
                             <Globe className="w-4 h-4 shrink-0" />
-                            {web3Wallet ? `Wallet: ${web3Wallet.shortAddress}` : 'Conectar Billetera Web3'}
+                            {activeWalletAddress ? `Wallet: ${activeShortAddress}` : 'Conectar Billetera Web3'}
                           </button>
 
                           <button
@@ -380,28 +408,28 @@ export default function Navbar({
               </div>
             </div>
 
-            {/* Aviso cambio de red MetaMask */}
-            {web3Wallet && selectedNetwork === 'BEP20' && web3Wallet.chainId !== 56 && (
+            {/* Aviso cambio de red MetaMask / Web3 */}
+            {activeWalletAddress && selectedNetwork === 'BEP20' && activeChainId !== 56 && (
               <div className="flex items-center justify-between gap-3 p-3 rounded-xl mb-4 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#a1a1a1' }}>
                 <div className="flex items-center gap-2">
                   <Info className="w-4 h-4 shrink-0" style={{ color: '#00FF88' }} />
-                  <span>MetaMask no está en BNB Chain.</span>
+                  <span>Tu billetera no está en BNB Chain (Chain ID: 56).</span>
                 </div>
                 <button type="button" onClick={() => handleSwitchNetwork('BEP20')} disabled={switchingNetwork} className="btn-primary text-[11px] py-1.5 px-3">
                   <RefreshCw className={`w-3.5 h-3.5 ${switchingNetwork ? 'animate-spin' : ''}`} />
-                  Cambiar
+                  {switchingNetwork ? 'Solicitando...' : 'Cambiar Red'}
                 </button>
               </div>
             )}
-            {web3Wallet && selectedNetwork === 'ERC20' && web3Wallet.chainId !== 1 && (
+            {activeWalletAddress && selectedNetwork === 'ERC20' && activeChainId !== 1 && (
               <div className="flex items-center justify-between gap-3 p-3 rounded-xl mb-4 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#a1a1a1' }}>
                 <div className="flex items-center gap-2">
                   <Info className="w-4 h-4 shrink-0" style={{ color: '#00FF88' }} />
-                  <span>MetaMask no está en Ethereum Mainnet.</span>
+                  <span>Tu billetera no está en Ethereum Mainnet (Chain ID: 1).</span>
                 </div>
                 <button type="button" onClick={() => handleSwitchNetwork('ERC20')} disabled={switchingNetwork} className="btn-primary text-[11px] py-1.5 px-3">
                   <RefreshCw className={`w-3.5 h-3.5 ${switchingNetwork ? 'animate-spin' : ''}`} />
-                  Cambiar
+                  {switchingNetwork ? 'Solicitando...' : 'Cambiar Red'}
                 </button>
               </div>
             )}
@@ -440,14 +468,12 @@ export default function Navbar({
                   <div>
                     <label className="block text-xs font-semibold mb-1.5" style={{ color: '#a1a1a1' }}>Billetera de Origen:</label>
                     <div className="flex items-center justify-between p-2.5 rounded-xl text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                      <span className="font-mono" style={{ color: web3Wallet ? '#00FF88' : '#6b7280' }}>
-                        {web3Wallet ? `${web3Wallet.shortAddress} · ${web3Wallet.networkName}` : 'Sin wallet conectada'}
+                      <span className="font-mono" style={{ color: activeWalletAddress ? '#00FF88' : '#6b7280' }}>
+                        {activeWalletAddress ? `${activeShortAddress} · ${activeChainId === 1 ? 'ERC20 (Ethereum)' : 'BEP20 (BNB Chain)'}` : 'Sin wallet conectada'}
                       </span>
-                      {(selectedNetwork === 'BEP20' || selectedNetwork === 'ERC20') && (
-                        <button type="button" onClick={() => setShowWeb3Modal(true)} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ background: 'rgba(0,255,136,0.10)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.25)' }}>
-                          {web3Wallet ? 'Cambiar' : 'Conectar'}
-                        </button>
-                      )}
+                      <button type="button" onClick={() => setShowWeb3Modal(true)} className="text-[11px] font-bold px-2.5 py-1 rounded-lg" style={{ background: 'rgba(0,255,136,0.10)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.25)' }}>
+                        {activeWalletAddress ? 'Cambiar Wallet' : 'Conectar Wallet'}
+                      </button>
                     </div>
                   </div>
 

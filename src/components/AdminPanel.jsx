@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { PlusCircle, ShieldAlert, Image, DollarSign, FileText, CheckCircle2, RefreshCw, Zap, Sliders, ArrowRight } from 'lucide-react';
-import { createAsset, updateAssetStatus, seedDemoAssetsIfEmpty } from '../services/api';
+import { PlusCircle, ShieldAlert, Image, DollarSign, FileText, CheckCircle2, RefreshCw, Sliders, ArrowRight } from 'lucide-react';
+import { createAsset, updateAssetStatus } from '../services/api';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {
   const [loading, setLoading] = useState(false);
-  const [seeding, setSeeding] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [lastCreatedAsset, setLastCreatedAsset] = useState(null);
@@ -115,19 +114,6 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
     }
   };
 
-  const handleSeedDemo = async () => {
-    setSeeding(true);
-    try {
-      await seedDemoAssetsIfEmpty();
-      onRefresh();
-      setSuccessMsg('🌱 Datos iniciales de demostración sincronizados en Supabase.');
-    } catch (err) {
-      console.error('Error al poblar demo:', err);
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   return (
     <div className="space-y-8 animate-fade-in pb-16">
       
@@ -142,15 +128,6 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
             Carga de activos fraccionados a Supabase con ficha técnica dinámica.
           </p>
         </div>
-
-        <button
-          onClick={handleSeedDemo}
-          disabled={seeding}
-          className="btn-secondary text-xs"
-        >
-          <Zap className="w-4 h-4 text-emerald-400" />
-          {seeding ? 'Cargando Demo...' : 'Cargar Activos Demo de Prueba'}
-        </button>
       </div>
 
       {/* Success Toast Banner */}

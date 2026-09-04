@@ -11,7 +11,6 @@ import {
   getUserProfile, 
   getUserWallet, 
   fetchAssets, 
-  seedDemoAssetsIfEmpty,
   depositFunds,
   fetchUserShares,
   signOutUser 
@@ -32,8 +31,8 @@ export default function App() {
   const initApp = async () => {
     setLoading(true);
     try {
-      // 1. Cargar catálogo de activos (o seed demo si vacío)
-      const loadedAssets = await seedDemoAssetsIfEmpty();
+      // 1. Cargar catálogo de activos reales desde Supabase
+      const loadedAssets = await fetchAssets();
       setAssets(loadedAssets);
 
       // 2. Verificar sesión activa en Supabase Auth
