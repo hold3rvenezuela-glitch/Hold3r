@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PlusCircle, ShieldAlert, Image, DollarSign, FileText, CheckCircle2, RefreshCw, Sliders, ArrowRight } from 'lucide-react';
+import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight } from 'lucide-react';
 import { createAsset, updateAssetStatus } from '../services/api';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {

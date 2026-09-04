@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, QrCode, ShieldAlert, Cpu } from 'lucide-react';
-import { useWeb3Modal, useWeb3ModalAccount } from '@web3modal/ethers/react';
+import { Globe, QrCode, ShieldAlert, Cpu, LogOut, Copy, Check, ExternalLink, RefreshCw } from 'lucide-react';
+import { useWeb3Modal, useWeb3ModalAccount, useDisconnect } from '@web3modal/ethers/react';
 import { connectWeb3Wallet, isWeb3Available } from '../services/web3';
 
 export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) {
   const [activeTab, setActiveTab] = useState('walletconnect'); // 'walletconnect' | 'injected'
   const [connecting, setConnecting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const { open } = useWeb3Modal();
   const { address, chainId, isConnected } = useWeb3ModalAccount();
+  const { disconnect } = useDisconnect();
 
   // Escucha conexiones de WalletConnect en tiempo real
   useEffect(() => {
@@ -20,13 +22,31 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
         networkName: chainId === 1 ? 'ERC20 (Ethereum)' : 'BEP20 (BNB Chain)',
         shortAddress: `${address.substring(0, 6)}...${address.substring(address.length - 4)}`
       });
-      onClose();
     }
   }, [isOpen, isConnected, address, chainId]);
 
   if (!isOpen) return null;
 
   const hasInjected = isWeb3Available();
+
+  const handleCopyAddress = () => {
+    if (address) {
+      navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      if (disconnect) {
+        await disconnect();
+      }
+    } catch (e) {
+      console.warn('Advertencia al desconectar:', e);
+    }
+    onWalletConnected(null);
+  };
 
   const handleInjectedConnect = async () => {
     setConnecting(true);
@@ -76,12 +96,60 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
             <Globe className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-xl font-bold text-white">Conectar Billetera Web3</h3>
+            <h3 className="text-xl font-bold text-white">Gestión de Billetera Web3</h3>
             <p className="text-xs text-neutral-400">
               Conexión directa multi-cadena mediante WalletConnect y extensiones EVM.
             </p>
           </div>
         </div>
+
+        {/* Active Connected Wallet Card */}
+        {isConnected && address ? (
+          <div className="bg-neutral-900/90 border border-cyan-500/50 p-5 rounded-2xl space-y-4 mb-6 animate-fade-in shadow-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                Wallet Conectada Activa
+              </span>
+              <span className="text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-lg border border-cyan-500/30">
+                Chain ID: {chainId || 56}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between bg-black/40 p-3 rounded-xl border border-white/10">
+              <span className="font-mono text-xs font-bold text-white truncate max-w-[240px]">
+                {address}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyAddress}
+                className="text-xs font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 shrink-0 ml-2"
+              >
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? '¡Copiado!' : 'Copiar'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleOpenWalletConnectModal}
+                className="btn-secondary text-xs py-2.5 flex items-center justify-center gap-1.5 border-cyan-500/30 text-cyan-300"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Cambiar / Red
+              </button>
+              <button
+                type="button"
+                onClick={handleDisconnect}
+                className="btn-secondary text-xs py-2.5 flex items-center justify-center gap-1.5 border-rose-500/30 text-rose-300 hover:bg-rose-500/10"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Desconectar
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Tab Switcher */}
         <div className="flex bg-neutral-900 border border-white/10 p-1 rounded-xl mb-5">

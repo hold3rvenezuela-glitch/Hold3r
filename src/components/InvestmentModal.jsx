@@ -1,12 +1,19 @@
 import React, { useState } from 'react';
-import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
+import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles, Wallet, Globe, RefreshCw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { investInAsset } from '../services/api';
+import { sendUsdtWeb3Transfer, isWeb3Available } from '../services/web3';
+import { useWeb3ModalAccount } from '@web3modal/ethers/react';
 
-export default function InvestmentModal({ asset, userProfile, wallet, onClose, onSuccess }) {
+export default function InvestmentModal({ asset, userProfile, wallet, onClose, onSuccess, onOpenWeb3Modal }) {
   const [amountUsdt, setAmountUsdt] = useState('100');
+  const [paymentMethod, setPaymentMethod] = useState('credit'); // 'credit' | 'direct_web3'
+  const [selectedNetwork, setSelectedNetwork] = useState('BEP20');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  const { address: wcAddress, isConnected: wcIsConnected } = useWeb3ModalAccount();
+  const activeWalletAddress = (wcIsConnected && wcAddress) ? wcAddress : null;
 
   if (!asset) return null;
 
@@ -29,30 +36,45 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
       return;
     }
 
-    if (numAmount > userBalance) {
-      setErrorMsg(`Saldo insuficiente en tu wallet ($${userBalance.toLocaleString()} USDT disponibles). Recarga tu saldo en la barra superior.`);
+    if (numAmount > remainingUsdt) {
+      setErrorMsg(`El monto excede el saldo pendiente de fondeo ($${remainingUsdt.toLocaleString()} USDT).`);
       return;
     }
 
-    if (numAmount > remainingUsdt) {
-      setErrorMsg(`El monto excede el saldo pendiente de fondeo ($${remainingUsdt.toLocaleString()} USDT).`);
+    if (paymentMethod === 'credit' && numAmount > userBalance) {
+      setErrorMsg(`Saldo acreditado insuficiente ($${userBalance.toLocaleString()} USDT disponible). Realiza un depósito o usa Pago Directo desde tu Wallet.`);
+      return;
+    }
+
+    if (paymentMethod === 'direct_web3' && !activeWalletAddress && !isWeb3Available()) {
+      if (onOpenWeb3Modal) onOpenWeb3Modal();
+      setErrorMsg('Conecta tu Billetera Web3 para firmar la transferencia directa.');
       return;
     }
 
     setLoading(true);
 
     try {
+      let contractTxHash = null;
+
+      // Si el pago es directo desde la wallet Web3, ejecutamos la transferencia en la blockchain primero
+      if (paymentMethod === 'direct_web3') {
+        const txRes = await sendUsdtWeb3Transfer({ amountUsdt: numAmount, network: selectedNetwork });
+        contractTxHash = txRes.txHash;
+      }
+
       const shareData = await investInAsset({
         userId: userProfile.id,
-        wallet: wallet,
+        wallet: paymentMethod === 'credit' ? wallet : { balance: userBalance }, // No descuenta saldo acreditado si es pago directo Web3
         asset: asset,
-        investmentUsdt: numAmount
+        investmentUsdt: numAmount,
+        signedHash: contractTxHash
       });
 
       // Animación de celebración
       confetti({
-        particleCount: 70,
-        spread: 60,
+        particleCount: 75,
+        spread: 70,
         origin: { y: 0.6 }
       });
 
@@ -100,7 +122,8 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
         )}
 
         <form onSubmit={handleInvest} className="space-y-5">
-          {/* Asset Quick Summary Card */}
+          
+          {/* Asset Summary Card */}
           <div className="bg-neutral-900/80 border border-white/10 p-4 rounded-2xl space-y-2 text-xs">
             <div className="flex items-center justify-between text-neutral-300">
               <span>Valoración Total del Activo:</span>
@@ -110,9 +133,59 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
               <span>Fondeo Restante Disponible:</span>
               <strong className="font-mono text-emerald-400 text-sm">${remainingUsdt.toLocaleString()} USDT</strong>
             </div>
-            <div className="flex items-center justify-between text-neutral-300">
-              <span>Tu Saldo USDT Disponible:</span>
-              <strong className="font-mono text-white text-sm">${userBalance.toLocaleString()} USDT</strong>
+          </div>
+
+          {/* Payment Method Switcher */}
+          <div>
+            <label className="block text-xs font-semibold text-neutral-300 mb-2">
+              Método de Pago para Inversión:
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('credit')}
+                className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                  paymentMethod === 'credit'
+                    ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-lg'
+                    : 'bg-neutral-900/90 border-white/10 text-neutral-400 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-emerald-400">
+                    <Wallet className="w-4 h-4" />
+                    Crédito HOLD3R
+                  </span>
+                  <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded">
+                    Acreditado
+                  </span>
+                </div>
+                <p className="text-[11px] font-mono font-extrabold text-white">
+                  ${userBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('direct_web3')}
+                className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                  paymentMethod === 'direct_web3'
+                    ? 'bg-cyan-500/15 border-cyan-500/50 text-white shadow-lg'
+                    : 'bg-neutral-900/90 border-white/10 text-neutral-400 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold flex items-center gap-1.5 text-cyan-400">
+                    <Globe className="w-4 h-4" />
+                    Pago Directo Web3
+                  </span>
+                  <span className="text-[10px] font-mono bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded">
+                    WalletConnect
+                  </span>
+                </div>
+                <p className="text-[11px] font-mono truncate text-neutral-300">
+                  {activeWalletAddress ? `${activeWalletAddress.substring(0, 6)}...${activeWalletAddress.substring(activeWalletAddress.length - 4)}` : 'Conectar Billetera'}
+                </p>
+              </button>
             </div>
           </div>
 
@@ -126,7 +199,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
               <input
                 type="number"
                 min="1"
-                max={Math.min(userBalance, remainingUsdt)}
+                max={paymentMethod === 'credit' ? Math.min(userBalance, remainingUsdt) : remainingUsdt}
                 step="1"
                 required
                 value={amountUsdt}
@@ -179,7 +252,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
               disabled={loading || numAmount <= 0}
               className="btn-primary text-xs py-3 px-6"
             >
-              {loading ? 'Firmando Transacción...' : `Confirmar Inversión por $${numAmount} USDT`}
+              {loading ? 'Procesando Inversión...' : `Confirmar Inversión por $${numAmount} USDT`}
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
