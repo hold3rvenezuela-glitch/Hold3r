@@ -66,25 +66,12 @@ export default function Navbar({
       if (!depositAmount || Number(depositAmount) <= 0) throw new Error('Ingresa un monto válido.');
 
       if (depositMode === 'direct') {
-        if (!web3Wallet && (selectedNetwork === 'BEP20' || selectedNetwork === 'ERC20')) {
+        if (!web3Wallet) {
           setShowWeb3Modal(true);
           setVerifyingTx(false);
           return;
         }
-        let txRes;
-        if (!web3Wallet || web3Wallet.isSandbox || selectedNetwork === 'TRC20' || selectedNetwork === 'SOLANA') {
-          await new Promise(r => setTimeout(r, 1200));
-          const simHash = selectedNetwork === 'SOLANA'
-            ? Array.from({length: 88}, () => Math.floor(Math.random()*16).toString(16)).join('')
-            : '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
-          let explorerUrl = `https://bscscan.com/tx/${simHash}`;
-          if (selectedNetwork === 'ERC20') explorerUrl = `https://etherscan.io/tx/${simHash}`;
-          else if (selectedNetwork === 'TRC20') explorerUrl = `https://tronscan.org/#/transaction/${simHash}`;
-          else if (selectedNetwork === 'SOLANA') explorerUrl = `https://solscan.io/tx/${simHash}`;
-          txRes = { success: true, txHash: simHash, treasuryAddress: currentTreasury, explorerUrl };
-        } else {
-          txRes = await sendUsdtWeb3Transfer({ amountUsdt: Number(depositAmount), network: selectedNetwork });
-        }
+        const txRes = await sendUsdtWeb3Transfer({ amountUsdt: Number(depositAmount), network: selectedNetwork });
         setTxSuccess(txRes);
         onDepositUsdt(Number(depositAmount));
       } else {
@@ -393,8 +380,8 @@ export default function Navbar({
               </div>
             </div>
 
-            {/* Aviso cambio de red MetaMask — neutro */}
-            {web3Wallet && !web3Wallet.isSandbox && selectedNetwork === 'BEP20' && web3Wallet.chainId !== 56 && (
+            {/* Aviso cambio de red MetaMask */}
+            {web3Wallet && selectedNetwork === 'BEP20' && web3Wallet.chainId !== 56 && (
               <div className="flex items-center justify-between gap-3 p-3 rounded-xl mb-4 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#a1a1a1' }}>
                 <div className="flex items-center gap-2">
                   <Info className="w-4 h-4 shrink-0" style={{ color: '#00FF88' }} />
@@ -406,7 +393,7 @@ export default function Navbar({
                 </button>
               </div>
             )}
-            {web3Wallet && !web3Wallet.isSandbox && selectedNetwork === 'ERC20' && web3Wallet.chainId !== 1 && (
+            {web3Wallet && selectedNetwork === 'ERC20' && web3Wallet.chainId !== 1 && (
               <div className="flex items-center justify-between gap-3 p-3 rounded-xl mb-4 text-xs" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', color: '#a1a1a1' }}>
                 <div className="flex items-center gap-2">
                   <Info className="w-4 h-4 shrink-0" style={{ color: '#00FF88' }} />

@@ -116,8 +116,7 @@ export async function connectWeb3Wallet() {
       chainId,
       chainIdHex,
       networkName,
-      shortAddress: `${address.substring(0, 6)}...${address.substring(address.length - 4)}`,
-      isSandbox: false
+      shortAddress: `${address.substring(0, 6)}...${address.substring(address.length - 4)}`
     };
   } catch (err) {
     console.error('Error al conectar Web3 wallet:', err);
