@@ -392,6 +392,9 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                   />
                 </div>
               </div>
+              <p className="text-[10px] text-neutral-400 leading-relaxed pt-1">
+                💡 <strong>Modo Cuota Fija:</strong> Si la Inversión Mínima es igual a la Inversión Máxima (ej. $13,000 USDT), el activo se fraccionará en cuotas fijas indivisibles.
+              </p>
             </div>
 
             <div>

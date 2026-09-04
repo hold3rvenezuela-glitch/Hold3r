@@ -466,6 +466,71 @@ export async function castVote({ proposalId, userId, voteChoice, weight = 1.0 })
 }
 
 // ----------------------------------------------------
+// RESERVAS TEMPORALES & LISTA DE ESPERA (15 MINUTOS)
+// ----------------------------------------------------
+
+const activeReservationsMap = new Map();
+const waitlistEntries = [];
+
+export async function reserveAssetSlot({ assetId, userId, amountUsdt }) {
+  const now = Date.now();
+  const key = `${assetId}_${userId}`;
+  const durationMs = 15 * 60 * 1000; // 15 minutos exactos
+
+  // Limpiar reservas expiradas
+  for (const [k, res] of activeReservationsMap.entries()) {
+    if (res.expiresAt <= now) {
+      activeReservationsMap.delete(k);
+    }
+  }
+
+  const reservation = {
+    id: generateUUID(),
+    assetId,
+    userId,
+    amountUsdt: Number(amountUsdt),
+    reservedAt: now,
+    expiresAt: now + durationMs
+  };
+
+  activeReservationsMap.set(key, reservation);
+  return reservation;
+}
+
+export function getActiveReservation(assetId, userId) {
+  if (!assetId || !userId) return null;
+  const key = `${assetId}_${userId}`;
+  const res = activeReservationsMap.get(key);
+
+  if (res) {
+    if (res.expiresAt > Date.now()) {
+      return res;
+    } else {
+      activeReservationsMap.delete(key);
+    }
+  }
+  return null;
+}
+
+export function releaseAssetReservation(assetId, userId) {
+  const key = `${assetId}_${userId}`;
+  activeReservationsMap.delete(key);
+}
+
+export async function joinAssetWaitlist({ assetId, userId, documentId, email }) {
+  const entry = {
+    id: generateUUID(),
+    assetId,
+    userId,
+    documentId: documentId || 'N/A',
+    email: email || 'usuario@hold3r.io',
+    createdAt: new Date().toISOString()
+  };
+  waitlistEntries.push(entry);
+  return entry;
+}
+
+// ----------------------------------------------------
 // DEMO SEED DATA (UUIDs estrictos y válidos)
 // ----------------------------------------------------
 
@@ -478,6 +543,8 @@ export const DEMO_ASSETS = [
     total_valuation: 120000.00,
     funded_amount: 84000.00,
     status: 'funding',
+    min_investment: 12000.00,
+    max_investment: 12000.00, // Modo Cuota Fija Obligatoria ($12,000 por cuota = 10 cuotas totales)
     legal_contract_url: 'https://hold3r.io/legal/contrato_altamira_v1.pdf',
     images: [
       'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80',
@@ -492,6 +559,8 @@ export const DEMO_ASSETS = [
     total_valuation: 85000.00,
     funded_amount: 85000.00,
     status: 'active_rent',
+    min_investment: 8500.00,
+    max_investment: 8500.00,
     legal_contract_url: 'https://hold3r.io/legal/contrato_cat_d8r.pdf',
     images: [
       'https://images.unsplash.com/photo-1579412690850-bd41cd0af397?auto=format&fit=crop&w=1200&q=80',
@@ -506,6 +575,8 @@ export const DEMO_ASSETS = [
     total_valuation: 65000.00,
     funded_amount: 32500.00,
     status: 'funding',
+    min_investment: 100.00,
+    max_investment: 10000.00,
     legal_contract_url: 'https://hold3r.io/legal/contrato_flota_ram.pdf',
     images: [
       'https://images.unsplash.com/photo-1559297434-fae8a1916a79?auto=format&fit=crop&w=1200&q=80',
