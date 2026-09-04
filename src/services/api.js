@@ -213,6 +213,47 @@ export async function fetchAssets() {
   return data || [];
 }
 
+// Helper para subir imágenes a Supabase Storage con fallback a Data URL
+export async function uploadAssetImage(file) {
+  if (!file) return null;
+
+  try {
+    const fileExt = file.name ? file.name.split('.').pop() : 'jpg';
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+    const filePath = `asset-images/${fileName}`;
+
+    // Intentar subida a Supabase Storage (bucket 'assets')
+    const { error: uploadError } = await supabase.storage
+      .from('assets')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (!uploadError) {
+      const { data: publicUrlData } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+      if (publicUrlData?.publicUrl) {
+        return publicUrlData.publicUrl;
+      }
+    } else {
+      console.warn('Aviso al subir foto a Supabase Storage (usando fallback local):', uploadError.message);
+    }
+  } catch (err) {
+    console.warn('Excepción en Supabase Storage (usando fallback local):', err.message);
+  }
+
+  // Fallback seguro a Data URL (base64) para compatibilidad total en móviles/dev
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = (e) => reject(e);
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function createAsset(assetData) {
   const payload = {
     title: assetData.title,
@@ -225,6 +266,8 @@ export async function createAsset(assetData) {
     images: assetData.images || [
       'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80'
     ],
+    min_investment: assetData.min_investment ? Number(assetData.min_investment) : 10,
+    max_investment: assetData.max_investment ? Number(assetData.max_investment) : null,
     created_at: new Date().toISOString()
   };
 

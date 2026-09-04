@@ -22,6 +22,11 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
   const remainingUsdt = Math.max(0, valuation - funded);
   const userBalance = Number(wallet?.balance || 0);
 
+  const minInvestment = Number(asset.min_investment || asset.minInvestment || 10);
+  const maxInvestment = (asset.max_investment || asset.maxInvestment)
+    ? Number(asset.max_investment || asset.maxInvestment)
+    : null;
+
   const numAmount = Number(amountUsdt) || 0;
   const sharePercent = valuation > 0 ? (numAmount / valuation) * 100 : 0;
   const projectedApr = 14.2; // APR promedio
@@ -33,6 +38,17 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
 
     if (numAmount <= 0) {
       setErrorMsg('Ingresa un monto válido a invertir.');
+      return;
+    }
+
+    if (numAmount < minInvestment) {
+      setErrorMsg(`La inversión mínima permitida por socio para este activo es de $${minInvestment.toLocaleString()} USDT.`);
+      return;
+    }
+
+    if (maxInvestment && numAmount > maxInvestment) {
+      const maxSharePercent = valuation > 0 ? ((maxInvestment / valuation) * 100).toFixed(1) : 0;
+      setErrorMsg(`La inversión máxima permitida por socio para este activo es de $${maxInvestment.toLocaleString()} USDT (${maxSharePercent}% de participación).`);
       return;
     }
 
@@ -132,6 +148,12 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
             <div className="flex items-center justify-between text-neutral-300">
               <span>Fondeo Restante Disponible:</span>
               <strong className="font-mono text-emerald-400 text-sm">${remainingUsdt.toLocaleString()} USDT</strong>
+            </div>
+            <div className="flex items-center justify-between text-neutral-300 pt-2 border-t border-white/10 text-[11px]">
+              <span>Reglas de Inversión por Socio:</span>
+              <span className="font-mono text-cyan-300 font-semibold">
+                Mín: ${minInvestment.toLocaleString()} USDT {maxInvestment ? `| Máx: $${maxInvestment.toLocaleString()} USDT (${((maxInvestment/valuation)*100).toFixed(1)}%)` : '| Sin límite máx.'}
+              </span>
             </div>
           </div>
 

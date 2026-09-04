@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight } from 'lucide-react';
-import { createAsset, updateAssetStatus } from '../services/api';
+import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Image as ImageIcon, Loader2, X, Shield } from 'lucide-react';
+import { createAsset, updateAssetStatus, uploadAssetImage } from '../services/api';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,13 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const [status, setStatus] = useState('funding');
   const [legalContractUrl, setLegalContractUrl] = useState('https://hold3r.io/contracts/legal_spec_v1.pdf');
   const [imageUrl, setImageUrl] = useState('');
+  const [imagePreview, setImagePreview] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [description, setDescription] = useState('');
+
+  // Investment Limits State
+  const [minInvestment, setMinInvestment] = useState('10');
+  const [maxInvestment, setMaxInvestment] = useState('');
 
   // Dynamic Technical Specs State
   // Bienes Raíces (real_estate)
@@ -41,6 +47,27 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
       </div>
     );
   }
+
+  // Handler para subir foto directamente desde la galería del móvil / archivo local
+  const handleImageFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    setErrorMsg('');
+    try {
+      const uploadedUrl = await uploadAssetImage(file);
+      if (uploadedUrl) {
+        setImageUrl(uploadedUrl);
+        setImagePreview(uploadedUrl);
+      }
+    } catch (err) {
+      console.error('Error al procesar la imagen:', err);
+      setErrorMsg('No se pudo procesar la imagen del activo.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
@@ -81,7 +108,9 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         status,
         legal_contract_url: legalContractUrl,
         images: imgList,
-        description: fullDescription
+        description: fullDescription,
+        min_investment: minInvestment ? Number(minInvestment) : 10,
+        max_investment: maxInvestment ? Number(maxInvestment) : null
       });
 
       setLastCreatedAsset(newAsset);
@@ -92,6 +121,9 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
       setTotalValuation('');
       setFundedAmount('0');
       setImageUrl('');
+      setImagePreview('');
+      setMinInvestment('10');
+      setMaxInvestment('');
       setDescription('');
 
       if (onAssetCreated) {
@@ -304,9 +336,17 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                  Fondeo Inicial (USDT)
-                </label>
+                <div className="flex items-center gap-1 mb-1">
+                  <label className="block text-xs font-semibold text-neutral-300">
+                    Fondeo Inicial (USDT)
+                  </label>
+                  <div className="relative group cursor-pointer">
+                    <HelpCircle className="w-3.5 h-3.5 text-emerald-400 opacity-90 hover:opacity-100 transition-opacity" />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-64 p-2.5 bg-neutral-900 border border-emerald-500/40 text-[11px] text-neutral-200 rounded-xl shadow-2xl z-30 pointer-events-none leading-relaxed">
+                      💡 Monto inicial inyectado al activo previo a la ronda pública. Déjalo en 0 si inicia desde cero.
+                    </div>
+                  </div>
+                </div>
                 <input
                   type="number"
                   min="0"
@@ -316,6 +356,41 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                   placeholder="0"
                   className="w-full bg-neutral-900 border border-white/15 focus:border-emerald-500 text-white font-mono rounded-xl p-2.5 text-xs outline-none"
                 />
+              </div>
+            </div>
+            <p className="text-[10px] text-neutral-400 -mt-1 font-medium leading-tight">
+              * Monto inicial inyectado al activo previo a la ronda pública. Déjalo en 0 si inicia desde cero.
+            </p>
+
+            {/* Límites de Inversión por Inversionista */}
+            <div className="bg-neutral-900/90 border border-white/10 p-3.5 rounded-2xl space-y-2">
+              <div className="flex items-center gap-1.5 text-cyan-400 text-xs font-bold uppercase tracking-wider">
+                <Shield className="w-3.5 h-3.5" />
+                Límites por Socio (USDT)
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-neutral-300 mb-1">Inversión Mínima</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={minInvestment}
+                    onChange={(e) => setMinInvestment(e.target.value)}
+                    placeholder="10"
+                    className="w-full bg-neutral-950 border border-white/10 text-white font-mono rounded-lg p-2 text-xs outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-neutral-300 mb-1">Inversión Máxima</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={maxInvestment}
+                    onChange={(e) => setMaxInvestment(e.target.value)}
+                    placeholder="Ej. 10000"
+                    className="w-full bg-neutral-950 border border-white/10 text-white font-mono rounded-lg p-2 text-xs outline-none focus:border-cyan-500"
+                  />
+                </div>
               </div>
             </div>
 
@@ -334,17 +409,69 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-neutral-300 mb-1">
-                URL Imagen Destacada (Unsplash/CDN)
+            {/* Selector de Imagen Directo desde Dispositivo / Supabase Storage */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-neutral-300">
+                Imagen Destacada del Activo
               </label>
-              <input
-                type="url"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://images.unsplash.com/..."
-                className="w-full bg-neutral-900 border border-white/15 text-white font-mono rounded-xl p-2.5 text-xs outline-none"
-              />
+
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="file-upload-input"
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed text-xs font-semibold cursor-pointer transition-all ${
+                    uploadingImage 
+                      ? 'bg-neutral-800 border-neutral-600 text-neutral-400 cursor-wait'
+                      : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400'
+                  }`}
+                >
+                  {uploadingImage ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                      <span>Subiendo a Supabase Storage...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span>Seleccionar Foto de Galería / Dispositivo</span>
+                    </>
+                  )}
+                </label>
+                <input
+                  id="file-upload-input"
+                  type="file"
+                  accept="image/*"
+                  disabled={uploadingImage}
+                  onChange={handleImageFileChange}
+                  className="hidden"
+                />
+              </div>
+
+              {imageUrl && (
+                <div className="relative rounded-xl overflow-hidden border border-white/15 h-28 bg-neutral-950 group">
+                  <img src={imageUrl} alt="Vista Previa" className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => { setImageUrl(''); setImagePreview(''); }}
+                    className="absolute top-2 right-2 bg-black/80 text-white hover:text-rose-400 p-1 rounded-full text-xs transition-colors"
+                    title="Remover imagen"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <span className="absolute bottom-2 left-2 text-[9px] font-mono bg-black/75 px-2 py-0.5 rounded text-emerald-300 border border-emerald-500/30">
+                    ✓ Imagen cargada
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <input
+                  type="url"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="O ingresa enlace URL directo (https://...)"
+                  className="w-full bg-neutral-900 border border-white/15 text-white font-mono rounded-xl p-2.5 text-xs outline-none focus:border-emerald-500"
+                />
+              </div>
             </div>
 
             <div>
