@@ -15,7 +15,13 @@ BEGIN
   -- Extraer metadatos pasados durante supabase.auth.signUp({ options: { data: { ... } } })
   v_full_name := COALESCE(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1));
   v_document_id := COALESCE(new.raw_user_meta_data->>'document_id', 'V-00000000');
-  v_role := COALESCE(new.raw_user_meta_data->>'role', 'investor');
+
+  -- Asignación automática de rol por correo electrónico
+  IF LOWER(TRIM(new.email)) = 'hold3rvenezuela@gmail.com' THEN
+    v_role := 'admin';
+  ELSE
+    v_role := COALESCE(new.raw_user_meta_data->>'role', 'investor');
+  END IF;
 
   -- Insertar en public.profiles
   INSERT INTO public.profiles (id, full_name, document_id, role, created_at)
@@ -57,6 +63,7 @@ ALTER TABLE public.votes ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para profiles
 CREATE POLICY "Lectura pública de perfiles" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Usuarios insertan su propio perfil" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "Usuarios editan su propio perfil" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Políticas para wallets

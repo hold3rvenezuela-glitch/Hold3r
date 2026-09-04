@@ -45,8 +45,12 @@ export async function getCurrentSession() {
   return session;
 }
 
-export async function signUpUser({ email, password, fullName, documentId, role = 'investor' }) {
-  // 1. Crear usuario en auth.users
+export async function signUpUser({ email, password, fullName, documentId }) {
+  // Determinar rol automáticamente según el correo electrónico
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const assignedRole = cleanEmail === 'hold3rvenezuela@gmail.com' ? 'admin' : 'investor';
+
+  // 1. Crear usuario en auth.users con metadatos completos
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
@@ -54,7 +58,7 @@ export async function signUpUser({ email, password, fullName, documentId, role =
       data: {
         full_name: fullName,
         document_id: documentId,
-        role: role
+        role: assignedRole
       }
     }
   });
@@ -69,18 +73,30 @@ export async function signUpUser({ email, password, fullName, documentId, role =
     id: user.id,
     full_name: fullName,
     document_id: documentId,
-    role: role,
+    role: assignedRole,
     created_at: new Date().toISOString()
   };
 
-  const { data: profile, error: profileError } = await supabase
-    .from(TABLES.PROFILES)
-    .upsert(profilePayload)
-    .select()
-    .single();
+  let profileData = null;
+  try {
+    const { data: profile, error: profileError } = await supabase
+      .from(TABLES.PROFILES)
+      .upsert(profilePayload, { onConflict: 'id' })
+      .select()
+      .maybeSingle();
 
-  if (profileError) {
-    console.warn('Advertencia al crear perfil en Supabase:', profileError.message);
+    if (profileError) {
+      console.warn('Advertencia al crear perfil en Supabase:', profileError.message);
+    } else {
+      profileData = profile;
+    }
+  } catch (err) {
+    console.warn('Error durante el upsert del perfil:', err.message);
+  }
+
+  // Si no se obtuvo del upsert, intentamos consultar el perfil generado por el trigger
+  if (!profileData) {
+    profileData = await getUserProfile(user.id);
   }
 
   // 3. Crear wallet inicial en public.wallets con un saldo inicial de demostración de $1,000 USDT
@@ -92,17 +108,28 @@ export async function signUpUser({ email, password, fullName, documentId, role =
     updated_at: new Date().toISOString()
   };
 
-  const { data: wallet, error: walletError } = await supabase
-    .from(TABLES.WALLETS)
-    .upsert(walletPayload)
-    .select()
-    .single();
+  let walletData = null;
+  try {
+    const { data: wallet, error: walletError } = await supabase
+      .from(TABLES.WALLETS)
+      .upsert(walletPayload)
+      .select()
+      .maybeSingle();
 
-  if (walletError) {
-    console.warn('Advertencia al crear wallet en Supabase:', walletError.message);
+    if (walletError) {
+      console.warn('Advertencia al crear wallet en Supabase:', walletError.message);
+    } else {
+      walletData = wallet;
+    }
+  } catch (err) {
+    console.warn('Error durante la inserción de la wallet:', err.message);
   }
 
-  return { user, profile: profile || profilePayload, wallet: wallet || walletPayload };
+  return {
+    user,
+    profile: profileData || profilePayload,
+    wallet: walletData || walletPayload
+  };
 }
 
 export async function signInUser({ email, password }) {

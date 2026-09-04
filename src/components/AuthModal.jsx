@@ -12,7 +12,6 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   const [documentId, setDocumentId] = useState('');
   const [email, setEmail]           = useState('');
   const [password, setPassword]     = useState('');
-  const [role, setRole]             = useState('investor');
 
   if (!isOpen) return null;
 
@@ -26,7 +25,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         if (!fullName || !documentId || !email || !password) {
           throw new Error('Por favor completa todos los campos requeridos.');
         }
-        const res = await signUpUser({ email, password, fullName, documentId, role });
+        const res = await signUpUser({ email, password, fullName, documentId });
         onAuthSuccess(res.profile);
       } else {
         if (!email || !password) {
@@ -193,39 +192,6 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
               />
             </div>
           </div>
-
-          {/* Rol (solo en registro) */}
-          {isSignUp && (
-            <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: '#a1a1a1' }}>
-                Rol de Cuenta
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setRole('investor')}
-                  className="py-2 px-3 text-xs font-bold rounded-xl border transition-all"
-                  style={role === 'investor'
-                    ? { background: 'rgba(0,255,136,0.10)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.30)' }
-                    : { background: 'transparent', color: '#6b7280', border: '1px solid rgba(255,255,255,0.08)' }
-                  }
-                >
-                  📈 Inversionista
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className="py-2 px-3 text-xs font-bold rounded-xl border transition-all"
-                  style={role === 'admin'
-                    ? { background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.20)' }
-                    : { background: 'transparent', color: '#6b7280', border: '1px solid rgba(255,255,255,0.08)' }
-                  }
-                >
-                  👑 Administrador
-                </button>
-              </div>
-            </div>
-          )}
 
           <button
             type="submit"
