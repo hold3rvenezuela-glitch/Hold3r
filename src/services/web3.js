@@ -301,16 +301,63 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
   // Parámetro 2: Monto en unidades mínimas (32 bytes)
   const dataPayload = `0xa9059cbb${cleanRecipient}${hexAmount}`;
 
+  // 4. Estimación previa de Gas (eth_estimateGas) y consulta de GasPrice (eth_gasPrice)
+  // Necesario para evitar alertas de "contrato desconocido" o "alto riesgo" en Trust Wallet y MetaMask Mobile
+  const txObject = {
+    from: fromAddress,
+    to: contractAddress,
+    data: dataPayload,
+    value: '0x0'
+  };
+
+  let estimatedGasHex = '0x15f90'; // 90,000 gas limit fallback (un transfer ERC20 estándar consume ~60,000 gas)
+  let gasPriceHex = null;
+
   try {
-    // Solicitud EIP-1193 transmitida a MetaMask / Trust Wallet
+    const gasEst = await activeProvider.request({
+      method: 'eth_estimateGas',
+      params: [txObject]
+    });
+    if (gasEst) {
+      // Aplicar un margen de seguridad de gas del +20% para asegurar la ejecución
+      const gasEstBigInt = BigInt(gasEst);
+      const bufferedGas = (gasEstBigInt * 120n) / 100n;
+      estimatedGasHex = '0x' + bufferedGas.toString(16);
+    }
+  } catch (estErr) {
+    console.warn('Estimación automática eth_estimateGas no retornó valor, usando fallback seguro (90k gas):', estErr);
+  }
+
+  try {
+    const gPrice = await activeProvider.request({
+      method: 'eth_gasPrice',
+      params: []
+    });
+    if (gPrice) {
+      gasPriceHex = gPrice;
+    }
+  } catch (gErr) {
+    console.warn('Consulta eth_gasPrice no disponible:', gErr);
+  }
+
+  // 5. Objeto de Transacción EIP-1193 Completo
+  const finalTxParams = {
+    from: fromAddress,
+    to: contractAddress,  // Contrato Oficial USDT (0x55d398326f99059fF775485246999027B3197955)
+    data: dataPayload,    // transfer(0x72D45C3d8147D3225C841C1f92D73D3F9A6A85a7, monto)
+    value: '0x0',          // Transacción de token BEP20/ERC20 sin envío de BNB/ETH nativo
+    gas: estimatedGasHex   // Límite de gas estimado (elimina alerta de riesgo por falta de cotización en Trust Wallet)
+  };
+
+  if (gasPriceHex) {
+    finalTxParams.gasPrice = gasPriceHex;
+  }
+
+  try {
+    // Solicitud EIP-1193 transmitida a Trust Wallet / MetaMask
     const txHash = await activeProvider.request({
       method: 'eth_sendTransaction',
-      params: [{
-        from: fromAddress,
-        to: contractAddress,  // Contrato Oficial USDT (0x55d398326f99059fF775485246999027B3197955)
-        data: dataPayload,    // transfer(0x72D45C3d8147D3225C841C1f92D73D3F9A6A85a7, monto)
-        value: '0x0'          // Transacción del token ERC20/BEP20 sin transferencia de BNB/ETH nativo
-      }]
+      params: [finalTxParams]
     });
 
     let explorerUrl = `https://bscscan.com/tx/${txHash}`;
