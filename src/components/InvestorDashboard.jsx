@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import { 
   Building2, 
   Truck, 
@@ -12,7 +11,8 @@ import {
   Zap,
   Sparkles,
   PieChart,
-  Users
+  Users,
+  Share2
 } from 'lucide-react';
 import AssetImageCarousel from './AssetImageCarousel';
 
@@ -176,7 +176,7 @@ export default function InvestorDashboard({
                         </span>
                       </div>
 
-                      {/* Valuation Tag */}
+                      {/* Valuation & Share Tag */}
                       <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between z-10">
                         <div>
                           <span className="text-[10px] text-neutral-400 font-semibold uppercase tracking-wider block">Valoración Total</span>
@@ -184,17 +184,31 @@ export default function InvestorDashboard({
                             ${valuation.toLocaleString('en-US')} USDT
                           </span>
                         </div>
-                        {asset.legal_contract_url && (
+                        <div className="flex items-center gap-1.5">
+                          {/* Botón Compartir en WhatsApp */}
                           <a 
-                            href={asset.legal_contract_url} 
+                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🔥 ¡Oportunidad de Inversión RWA en HOLD3R! 🚀\n\n*${asset.title}*\nValoración: $${valuation.toLocaleString()} USDT\n${asset.metadata?.market_valuation ? `Valor Mercado Estimado: $${Number(asset.metadata.market_valuation).toLocaleString()} USD\n` : ''}\nCompra tu acción aquí: ${window.location.href}`)}`}
                             target="_blank" 
                             rel="noreferrer"
-                            className="bg-neutral-900/80 hover:bg-neutral-900 text-neutral-300 hover:text-white p-2 rounded-xl border border-white/15 transition-colors"
-                            title="Ver Contrato Legal Auditado"
+                            className="bg-emerald-500/80 hover:bg-emerald-400 text-neutral-950 p-2 rounded-xl border border-emerald-400/30 transition-all font-bold flex items-center gap-1 shadow-lg"
+                            title="Compartir en WhatsApp"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <ExternalLink className="w-4 h-4 text-emerald-400" />
+                            <Share2 className="w-4 h-4" />
                           </a>
-                        )}
+                          {asset.legal_contract_url && (
+                            <a 
+                              href={asset.legal_contract_url} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="bg-neutral-900/80 hover:bg-neutral-900 text-neutral-300 hover:text-white p-2 rounded-xl border border-white/15 transition-colors"
+                              title="Ver Contrato Legal Auditado"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ExternalLink className="w-4 h-4 text-emerald-400" />
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </>
                   )}
@@ -209,6 +223,34 @@ export default function InvestorDashboard({
                     <p className="text-xs text-neutral-400 line-clamp-2 mt-1 font-normal leading-relaxed">
                       {asset.description}
                     </p>
+
+                    {/* Gancho de Inversión (Plusvalía / Ganancia estimada por Holder) en Catálogo */}
+                    {(() => {
+                      const mktVal = Number(asset.metadata?.market_valuation || asset.market_valuation) || 0;
+                      const numH = Number(asset.num_holders) || (assetIsFixedQuota && totalH3rs > 0 ? totalH3rs : 0);
+                      const appreciation = mktVal - valuation;
+                      const gainPerHolder = numH > 0 && appreciation > 0 ? Math.floor(appreciation / numH) : 0;
+
+                      if (mktVal > valuation && valuation > 0) {
+                        return (
+                          <div className="mt-3 bg-gradient-to-r from-emerald-950/70 to-cyan-950/70 border border-emerald-500/30 rounded-xl p-2.5 space-y-1">
+                            <div className="flex items-center justify-between text-[10px] uppercase font-bold text-emerald-400">
+                              <span className="flex items-center gap-1">
+                                <TrendingUp className="w-3 h-3 text-emerald-400" /> Valor Mercado: ${mktVal.toLocaleString()}
+                              </span>
+                              <span className="text-cyan-300 font-mono">+${appreciation.toLocaleString()} USDT</span>
+                            </div>
+                            {gainPerHolder > 0 && (
+                              <p className="text-[11px] font-extrabold text-white font-mono flex items-center justify-between pt-0.5 border-t border-white/5">
+                                <span className="text-neutral-300 font-normal">Ganancia / Holder:</span>
+                                <span className="text-emerald-400">+${gainPerHolder.toLocaleString()} USDT</span>
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
 
                   {/* Funding Progress */}

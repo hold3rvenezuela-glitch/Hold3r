@@ -455,7 +455,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
             </div>
             <div className="flex items-center justify-between text-[11px] font-mono">
               <span className="text-emerald-400 font-semibold">{Math.max(0, totalShares - fundedShares)} cupos libres</span>
-              <span className="text-neutral-400">${fixedQuotaAmount?.toLocaleString()} USDT / cuota</span>
+              <span className="text-neutral-400">${fixedQuotaAmount?.toLocaleString()} USDT / acción</span>
             </div>
           </div>
         )}
@@ -476,7 +476,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
             <div>
               <h4 className="text-base font-bold text-white">Este activo se encuentra 100% fondeado</h4>
               <p className="text-xs text-neutral-400 mt-1 max-w-md mx-auto leading-relaxed">
-                Todas las cuotas o participaciones disponibles han sido adjudicadas o reservadas. Puedes unirte a la lista de espera para recibir notificación prioritaria si algún cupo se libera.
+                Todas las acciones o participaciones disponibles han sido adjudicadas o reservadas. Puedes unirte a la lista de espera para recibir notificación prioritaria si algún cupo se libera.
               </p>
             </div>
 
@@ -498,7 +498,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
             )}
           </div>
         ) : (
-          /* CASO 2: FORMULARIO NORMAL / CUOTA FIJA */
+          /* CASO 2: FORMULARIO NORMAL / ACCIÓN FIJA */
           <form onSubmit={handleInvest} className="space-y-5">
             
             {/* Asset Summary Card & Quotas count */}
@@ -511,12 +511,12 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
               {isFixedQuota ? (
                 <>
                   <div className="flex items-center justify-between text-neutral-300">
-                    <span>Acciones / Cuotas Totales del Activo:</span>
-                    <strong className="font-mono text-cyan-300 text-xs">{totalShares} cuotas de ${fixedQuotaAmount.toLocaleString()} USDT</strong>
+                    <span>Acciones Totales del Activo:</span>
+                    <strong className="font-mono text-cyan-300 text-xs">{totalShares} acciones de ${fixedQuotaAmount.toLocaleString()} USDT</strong>
                   </div>
                   <div className="flex items-center justify-between text-neutral-300">
-                    <span>Cuotas Disponibles para Compra:</span>
-                    <strong className="font-mono text-emerald-400 text-sm">{availableShares} cuotas libres</strong>
+                    <span>Acciones Disponibles para Compra:</span>
+                    <strong className="font-mono text-emerald-400 text-sm">{availableShares} acciones libres</strong>
                   </div>
                 </>
               ) : (
@@ -544,12 +544,12 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
               </div>
             </div>
 
-            {/* SELECTOR DE MONTO O CUOTA FIJA */}
+            {/* SELECTOR DE MONTO O ACCIÓN FIJA */}
             {isFixedQuota ? (
               <div className="bg-neutral-900/90 border border-cyan-500/40 p-4 rounded-2xl space-y-3">
                 <label className="block text-xs font-bold text-cyan-300 flex items-center gap-1.5">
                   <Lock className="w-4 h-4 text-cyan-400" />
-                  Selección por Cuota Fija ($${fixedQuotaAmount.toLocaleString()} USDT por cuota):
+                  Selección por Acción Fija (${fixedQuotaAmount.toLocaleString()} USDT por acción):
                 </label>
 
                 <div className="grid grid-cols-3 gap-2">
@@ -567,7 +567,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
                             : 'bg-neutral-950 border-white/10 text-neutral-400 hover:text-white'
                         }`}
                       >
-                        <div className="text-xs font-bold">{count} {count === 1 ? 'Cuota' : 'Cuotas'}</div>
+                        <div className="text-xs font-bold">{count} {count === 1 ? 'Acción' : 'Acciones'}</div>
                         <div className="text-[11px] font-mono font-extrabold text-cyan-300 mt-0.5">
                           ${countCost.toLocaleString()} USDT
                         </div>

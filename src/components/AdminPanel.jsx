@@ -596,17 +596,17 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               {parsedNumHolders > 0 && parsedValuation > 0 && (
                 <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">Cuota Automática Calculada</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">Valor de Acción Calculado</p>
                     <p className="text-[11px] text-neutral-300">${parsedValuation.toLocaleString()} ÷ {parsedNumHolders} holders</p>
                   </div>
                   <div className="text-right">
                     <span className="text-xl font-extrabold text-white font-mono">${autoQuota.toLocaleString()}</span>
-                    <p className="text-[10px] text-purple-400 font-bold">USDT / holder</p>
+                    <p className="text-[10px] text-purple-400 font-bold">USDT / acción</p>
                   </div>
                 </div>
               )}
               <p className="text-[10px] text-neutral-400 leading-relaxed">
-                💡 Al ingresar la cantidad de holders, el sistema calculará automáticamente la cuota fija (Mín = Máx). Los campos manuales de Inversión Mín / Máx quedan como respaldo si dejas este campo vacío.
+                💡 Al ingresar la cantidad de holders, el sistema calculará automáticamente la acción fija (Mín = Máx). Los campos manuales de Inversión Mín / Máx quedan como respaldo si dejas este campo vacío.
               </p>
             </div>
 
@@ -641,7 +641,7 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                 </div>
               </div>
               <p className="text-[10px] text-neutral-400 leading-relaxed pt-1">
-                💡 <strong>Modo Cuota Fija:</strong> Si Mínima = Máxima (ej. $13,000 USDT), el activo se fraccionará en cuotas fijas indivisibles.
+                💡 <strong>Modo Acción Fija:</strong> Si Mínima = Máxima (ej. $13,000 USDT), el activo se fraccionará en acciones fijas indivisibles.
               </p>
 
               {/* ── HOLD3RS Calculator ─────────────────── */}
@@ -652,7 +652,7 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">HOLD3RS Totales</p>
                       <p className="text-[11px] text-neutral-300">
-                        ${parsedValuation.toLocaleString()} ÷ ${(autoQuota > 0 ? autoQuota : effectiveMin).toLocaleString()} USDT/cuota
+                        ${parsedValuation.toLocaleString()} ÷ ${(autoQuota > 0 ? autoQuota : effectiveMin).toLocaleString()} USDT/acción
                       </p>
                     </div>
                   </div>
