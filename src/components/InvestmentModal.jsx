@@ -4,6 +4,7 @@ import confetti from 'canvas-confetti';
 import { investInAsset, reserveAssetSlot, getActiveReservation, releaseAssetReservation, joinAssetWaitlist, fetchActiveReservationsSumForAsset } from '../services/api';
 import { sendUsdtWeb3Transfer, isWeb3Available } from '../services/web3';
 import { useWeb3ModalAccount } from '@web3modal/ethers/react';
+import AssetImageCarousel from './AssetImageCarousel';
 
 export default function InvestmentModal({ asset, userProfile, wallet, onClose, onSuccess, onOpenWeb3Modal }) {
   const { address: wcAddress, isConnected: wcIsConnected } = useWeb3ModalAccount();
@@ -31,6 +32,10 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
   const maxInvestment = (asset.max_investment || asset.maxInvestment)
     ? Number(asset.max_investment || asset.maxInvestment)
     : null;
+
+  const assetImages = Array.isArray(asset.images) && asset.images.length > 0
+    ? asset.images
+    : ['https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80'];
 
   // Lógica de Cuota Fija (Mínimo == Máximo)
   const isFixedQuota = Boolean(minInvestment && maxInvestment && minInvestment === maxInvestment);
@@ -272,6 +277,15 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
               Cuota Fija: ${fixedQuotaAmount.toLocaleString()} USDT
             </span>
           ) : null}
+        </div>
+
+        {/* Carrusel Deslizante de Fotografías en Modal */}
+        <div className="rounded-2xl overflow-hidden border border-white/10 shadow-lg">
+          <AssetImageCarousel 
+            images={assetImages} 
+            title={asset.title} 
+            heightClass="h-44 sm:h-52"
+          />
         </div>
 
         {errorMsg && (

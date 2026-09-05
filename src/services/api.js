@@ -254,6 +254,26 @@ export async function uploadAssetImage(file) {
   });
 }
 
+// Helper para subir múltiples fotos en lote a Supabase Storage (hasta 20 imágenes)
+export async function uploadMultipleAssetImages(files) {
+  if (!files || files.length === 0) return [];
+  const fileArray = Array.from(files).slice(0, 20); // Máximo 20 fotos
+  const uploadedUrls = [];
+
+  for (const file of fileArray) {
+    try {
+      const url = await uploadAssetImage(file);
+      if (url) {
+        uploadedUrls.push(url);
+      }
+    } catch (err) {
+      console.warn('Aviso en subida múltiple:', err);
+    }
+  }
+
+  return uploadedUrls;
+}
+
 export async function createAsset(assetData) {
   const payload = {
     title: assetData.title,

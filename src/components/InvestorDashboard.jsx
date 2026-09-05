@@ -13,6 +13,7 @@ import {
   Sparkles,
   PieChart
 } from 'lucide-react';
+import AssetImageCarousel from './AssetImageCarousel';
 
 export default function InvestorDashboard({ 
   assets, 
@@ -139,61 +140,58 @@ export default function InvestorDashboard({
             const funded = Number(asset.funded_amount);
             const percent = valuation > 0 ? Math.min(100, Math.round((funded / valuation) * 100)) : 0;
             const remaining = Math.max(0, valuation - funded);
-            const firstImg = Array.isArray(asset.images) && asset.images.length > 0
-              ? asset.images[0]
-              : 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80';
+            const assetImagesList = Array.isArray(asset.images) && asset.images.length > 0
+              ? asset.images
+              : ['https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80'];
 
             return (
               <div 
                 key={asset.id}
                 className="glass-panel glass-panel-hover overflow-hidden flex flex-col group border border-white/10"
               >
-                {/* Image & Badges Overlay */}
-                <div className="relative h-52 w-full overflow-hidden bg-neutral-900">
-                  <img 
-                    src={firstImg} 
-                    alt={asset.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    onError={(e) => {
-                      e.target.src = 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80';
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-transparent to-transparent opacity-85" />
+                {/* Carrusel Deslizante de Fotos con Badges */}
+                <AssetImageCarousel 
+                  images={assetImagesList} 
+                  title={asset.title} 
+                  heightClass="h-56"
+                  childrenOverlay={(
+                    <>
+                      {/* Category & Status Pills */}
+                      <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
+                        <span className={`badge-category badge-${asset.category}`}>
+                          {asset.category === 'real_estate' ? 'Bienes Raíces' : asset.category === 'heavy_machinery' ? 'Maquinaria' : 'Vehículos'}
+                        </span>
+                      </div>
 
-                  {/* Category & Status Pills */}
-                  <div className="absolute top-3 left-3 flex items-center gap-2">
-                    <span className={`badge-category badge-${asset.category}`}>
-                      {asset.category === 'real_estate' ? 'Bienes Raíces' : asset.category === 'heavy_machinery' ? 'Maquinaria' : 'Vehículos'}
-                    </span>
-                  </div>
+                      <div className="absolute top-3 right-3 z-10">
+                        <span className={`badge-category badge-status-${asset.status}`}>
+                          {asset.status === 'funding' ? 'Fondeando' : asset.status === 'active_rent' ? 'Renta Activa' : 'Vendido'}
+                        </span>
+                      </div>
 
-                  <div className="absolute top-3 right-3">
-                    <span className={`badge-category badge-status-${asset.status}`}>
-                      {asset.status === 'funding' ? 'Fondeando' : asset.status === 'active_rent' ? 'Renta Activa' : 'Vendido'}
-                    </span>
-                  </div>
-
-                  {/* Valuation Tag */}
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] text-neutral-400 font-semibold uppercase tracking-wider block">Valoración Total</span>
-                      <span className="text-lg font-bold text-white font-mono">
-                        ${valuation.toLocaleString('en-US')} USDT
-                      </span>
-                    </div>
-                    {asset.legal_contract_url && (
-                      <a 
-                        href={asset.legal_contract_url} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="bg-neutral-900/80 hover:bg-neutral-900 text-neutral-300 hover:text-white p-2 rounded-xl border border-white/15 transition-colors"
-                        title="Ver Contrato Legal Auditado"
-                      >
-                        <ExternalLink className="w-4 h-4 text-emerald-400" />
-                      </a>
-                    )}
-                  </div>
-                </div>
+                      {/* Valuation Tag */}
+                      <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between z-10">
+                        <div>
+                          <span className="text-[10px] text-neutral-400 font-semibold uppercase tracking-wider block">Valoración Total</span>
+                          <span className="text-lg font-bold text-white font-mono drop-shadow">
+                            ${valuation.toLocaleString('en-US')} USDT
+                          </span>
+                        </div>
+                        {asset.legal_contract_url && (
+                          <a 
+                            href={asset.legal_contract_url} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="bg-neutral-900/80 hover:bg-neutral-900 text-neutral-300 hover:text-white p-2 rounded-xl border border-white/15 transition-colors"
+                            title="Ver Contrato Legal Auditado"
+                          >
+                            <ExternalLink className="w-4 h-4 text-emerald-400" />
+                          </a>
+                        )}
+                      </div>
+                    </>
+                  )}
+                />
 
                 {/* Content Body */}
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-4">

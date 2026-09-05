@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Image as ImageIcon, Loader2, X, Shield, Trash2 } from 'lucide-react';
-import { createAsset, updateAssetStatus, deleteAsset, uploadAssetImage } from '../services/api';
+import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Image as ImageIcon, Loader2, X, Shield, Trash2, Plus } from 'lucide-react';
+import { createAsset, updateAssetStatus, deleteAsset, uploadAssetImage, uploadMultipleAssetImages } from '../services/api';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {
   const [loading, setLoading] = useState(false);
@@ -15,8 +15,10 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const [fundedAmount, setFundedAmount] = useState('0');
   const [status, setStatus] = useState('funding');
   const [legalContractUrl, setLegalContractUrl] = useState('https://hold3r.io/contracts/legal_spec_v1.pdf');
-  const [imageUrl, setImageUrl] = useState('');
-  const [imagePreview, setImagePreview] = useState('');
+  
+  // Multiple Images State
+  const [imagesList, setImagesList] = useState([]);
+  const [manualUrl, setManualUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [description, setDescription] = useState('');
 
@@ -48,25 +50,34 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
     );
   }
 
-  // Handler para subir foto directamente desde la galería del móvil / archivo local
-  const handleImageFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Handler para subir múltiples fotos en lote desde la galería del móvil / archivo local
+  const handleMultipleImagesUpload = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploadingImage(true);
     setErrorMsg('');
     try {
-      const uploadedUrl = await uploadAssetImage(file);
-      if (uploadedUrl) {
-        setImageUrl(uploadedUrl);
-        setImagePreview(uploadedUrl);
+      const uploadedUrls = await uploadMultipleAssetImages(files);
+      if (uploadedUrls && uploadedUrls.length > 0) {
+        setImagesList(prev => [...prev, ...uploadedUrls].slice(0, 20)); // Límite máximo 20 fotos
       }
     } catch (err) {
-      console.error('Error al procesar la imagen:', err);
-      setErrorMsg('No se pudo procesar la imagen del activo.');
+      console.error('Error al procesar las imágenes:', err);
+      setErrorMsg('No se pudieron procesar algunas imágenes.');
     } finally {
       setUploadingImage(false);
     }
+  };
+
+  const handleRemoveImage = (indexToRemove) => {
+    setImagesList(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleAddManualUrl = () => {
+    if (!manualUrl.trim()) return;
+    setImagesList(prev => [...prev, manualUrl.trim()].slice(0, 20));
+    setManualUrl('');
   };
 
   const handleCreateSubmit = async (e) => {
@@ -90,15 +101,13 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
 
       const fullDescription = techSpecHeader + description;
 
-      const imgList = imageUrl.trim() 
-        ? [imageUrl.trim()]
-        : [
-            category === 'real_estate' 
-              ? 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80'
-              : category === 'heavy_machinery'
-              ? 'https://images.unsplash.com/photo-1579412690850-bd41cd0af397?auto=format&fit=crop&w=1200&q=80'
-              : 'https://images.unsplash.com/photo-1559297434-fae8a1916a79?auto=format&fit=crop&w=1200&q=80'
-          ];
+      const defaultFallbackImg = category === 'real_estate' 
+        ? 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80'
+        : category === 'heavy_machinery'
+        ? 'https://images.unsplash.com/photo-1579412690850-bd41cd0af397?auto=format&fit=crop&w=1200&q=80'
+        : 'https://images.unsplash.com/photo-1559297434-fae8a1916a79?auto=format&fit=crop&w=1200&q=80';
+
+      const finalImages = imagesList.length > 0 ? imagesList : [defaultFallbackImg];
 
       const newAsset = await createAsset({
         title,
@@ -107,21 +116,21 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         funded_amount: Number(fundedAmount || 0),
         status,
         legal_contract_url: legalContractUrl,
-        images: imgList,
+        images: finalImages,
         description: fullDescription,
         min_investment: minInvestment ? Number(minInvestment) : 10,
         max_investment: maxInvestment ? Number(maxInvestment) : null
       });
 
       setLastCreatedAsset(newAsset);
-      setSuccessMsg(`🎉 ¡Activo RWA "${title}" publicado en Supabase exitosamente!`);
+      setSuccessMsg(`🎉 ¡Activo RWA "${title}" publicado en Supabase exitosamente con ${finalImages.length} fotos!`);
       
       // Limpiar formulario
       setTitle('');
       setTotalValuation('');
       setFundedAmount('0');
-      setImageUrl('');
-      setImagePreview('');
+      setImagesList([]);
+      setManualUrl('');
       setMinInvestment('10');
       setMaxInvestment('');
       setDescription('');
@@ -431,16 +440,24 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               </select>
             </div>
 
-            {/* Selector de Imagen Directo desde Dispositivo / Supabase Storage */}
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-neutral-300">
-                Imagen Destacada del Activo
-              </label>
+            {/* Selector de Imágenes Múltiples desde Dispositivo / Supabase Storage */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-neutral-300">
+                  Galería de Fotos del Activo ({imagesList.length}/20)
+                </label>
+                {imagesList.length > 0 && (
+                  <span className="text-[10px] font-mono text-emerald-400">
+                    {imagesList.length} {imagesList.length === 1 ? 'foto agregada' : 'fotos agregadas'}
+                  </span>
+                )}
+              </div>
 
+              {/* Input Múltiple para Seleccionar de Galería */}
               <div className="flex items-center gap-2">
                 <label
-                  htmlFor="file-upload-input"
-                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed text-xs font-semibold cursor-pointer transition-all ${
+                  htmlFor="file-upload-input-multiple"
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-dashed text-xs font-semibold cursor-pointer transition-all ${
                     uploadingImage 
                       ? 'bg-neutral-800 border-neutral-600 text-neutral-400 cursor-wait'
                       : 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400'
@@ -449,50 +466,65 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                   {uploadingImage ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                      <span>Subiendo a Supabase Storage...</span>
+                      <span>Subiendo fotos a Supabase Storage...</span>
                     </>
                   ) : (
                     <>
                       <Upload className="w-4 h-4" />
-                      <span>Seleccionar Foto de Galería / Dispositivo</span>
+                      <span>Seleccionar Múltiples Fotos (Galería Móvil/PC)</span>
                     </>
                   )}
                 </label>
                 <input
-                  id="file-upload-input"
+                  id="file-upload-input-multiple"
                   type="file"
                   accept="image/*"
+                  multiple
                   disabled={uploadingImage}
-                  onChange={handleImageFileChange}
+                  onChange={handleMultipleImagesUpload}
                   className="hidden"
                 />
               </div>
 
-              {imageUrl && (
-                <div className="relative rounded-xl overflow-hidden border border-white/15 h-28 bg-neutral-950 group">
-                  <img src={imageUrl} alt="Vista Previa" className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => { setImageUrl(''); setImagePreview(''); }}
-                    className="absolute top-2 right-2 bg-black/80 text-white hover:text-rose-400 p-1 rounded-full text-xs transition-colors"
-                    title="Remover imagen"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                  <span className="absolute bottom-2 left-2 text-[9px] font-mono bg-black/75 px-2 py-0.5 rounded text-emerald-300 border border-emerald-500/30">
-                    ✓ Imagen cargada
-                  </span>
+              {/* Grid de Previsualización de Miniaturas */}
+              {imagesList.length > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 bg-neutral-950 p-2.5 rounded-2xl border border-white/10 max-h-48 overflow-y-auto">
+                  {imagesList.map((url, idx) => (
+                    <div key={idx} className="relative rounded-xl overflow-hidden border border-white/15 h-20 bg-neutral-900 group">
+                      <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(idx)}
+                        className="absolute top-1 right-1 bg-black/80 hover:bg-rose-600 text-white p-1 rounded-full text-xs transition-colors"
+                        title="Remover esta foto"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                      <span className="absolute bottom-1 left-1 text-[8px] font-mono bg-black/80 px-1 py-0.2 rounded text-neutral-300">
+                        #{idx + 1}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              <div>
+              {/* Opción Manual: Agregar URL adicional */}
+              <div className="flex items-center gap-2">
                 <input
                   type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="O ingresa enlace URL directo (https://...)"
-                  className="w-full bg-neutral-900 border border-white/15 text-white font-mono rounded-xl p-2.5 text-xs outline-none focus:border-emerald-500"
+                  value={manualUrl}
+                  onChange={(e) => setManualUrl(e.target.value)}
+                  placeholder="O pega una URL de imagen (https://...)"
+                  className="flex-1 bg-neutral-900 border border-white/15 text-white font-mono rounded-xl p-2 text-xs outline-none focus:border-emerald-500"
                 />
+                <button
+                  type="button"
+                  onClick={handleAddManualUrl}
+                  className="btn-secondary py-2 px-3 text-xs flex items-center gap-1"
+                  title="Agregar URL a la Galería"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Agregar
+                </button>
               </div>
             </div>
 
