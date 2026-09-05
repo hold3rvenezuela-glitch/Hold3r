@@ -28,18 +28,24 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
 
   // ── Cantidad de Holders (auto-calculador de cuota fija) ──────
   const [numHolders, setNumHolders] = useState('');
+  
+  // ── Valor Real de Mercado (USD) - Gancho de Inversión ────────
+  const [marketValuation, setMarketValuation] = useState('');
 
-  // ── Ratings 0-10 por categoría ────────────────────────────────
+  // ── Ratings 0-10 por categoría (etiquetas exclusivas según categoría) ─
   const [ratings, setRatings] = useState({
-    location_rating: 5, condition_rating: 5, roi_rating: 5, liquidity_rating: 5,
-    mechanical_rating: 5, paint_rating: 5, market_demand_rating: 5,
-    hours_rating: 5, maintenance_rating: 5, resale_rating: 5,
+    // Maquinaria Pesada: Motor, Cabina, Neumáticos, Pintura, Bomba Hidráulica, Mantenimiento
+    engine_machinery: 8, cabin_machinery: 8, tires_machinery: 8, paint_machinery: 8, hydraulic_machinery: 8, maintenance_machinery: 8,
+    // Vehículo: Motor, Tren, Pintura, Caja, Neumáticos
+    engine_vehicle: 8, drive_vehicle: 8, paint_vehicle: 8, gearbox_vehicle: 8, tires_vehicle: 8,
+    // Bienes Raíces: Pintura, Pisos, Baños, Cuartos, Cocina, Estructura, Ubicación
+    paint_realestate: 8, floors_realestate: 8, bathrooms_realestate: 8, rooms_realestate: 8, kitchen_realestate: 8, structure_realestate: 8, location_realestate: 8
   });
 
   const updateRating = (key, delta) => {
     setRatings(prev => ({
       ...prev,
-      [key]: Math.min(10, Math.max(0, (prev[key] ?? 5) + delta))
+      [key]: Math.min(10, Math.max(0, (prev[key] ?? 8) + delta))
     }));
   };
 
@@ -170,28 +176,39 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         };
       }
 
+      // Si se especificó Valor Real de Mercado, incluirlo en metadata
+      if (marketValuation && Number(marketValuation) > 0) {
+        metadata.market_valuation = Number(marketValuation);
+      }
+
       // Construir objeto ratings según categoría
       let activeRatings = {};
       if (category === 'real_estate') {
         activeRatings = {
-          location: ratings.location_rating,
-          condition: ratings.condition_rating,
-          roi: ratings.roi_rating,
-          liquidity: ratings.liquidity_rating,
+          paint: ratings.paint_realestate,
+          floors: ratings.floors_realestate,
+          bathrooms: ratings.bathrooms_realestate,
+          rooms: ratings.rooms_realestate,
+          kitchen: ratings.kitchen_realestate,
+          structure: ratings.structure_realestate,
+          location: ratings.location_realestate,
         };
       } else if (category === 'fleet') {
         activeRatings = {
-          mechanical: ratings.mechanical_rating,
-          paint: ratings.paint_rating,
-          market_demand: ratings.market_demand_rating,
-          roi: ratings.roi_rating,
+          engine: ratings.engine_vehicle,
+          drive: ratings.drive_vehicle,
+          paint: ratings.paint_vehicle,
+          gearbox: ratings.gearbox_vehicle,
+          tires: ratings.tires_vehicle,
         };
       } else if (category === 'heavy_machinery') {
         activeRatings = {
-          hours: ratings.hours_rating,
-          maintenance: ratings.maintenance_rating,
-          resale: ratings.resale_rating,
-          roi: ratings.roi_rating,
+          engine: ratings.engine_machinery,
+          cabin: ratings.cabin_machinery,
+          tires: ratings.tires_machinery,
+          paint: ratings.paint_machinery,
+          hydraulic: ratings.hydraulic_machinery,
+          maintenance: ratings.maintenance_machinery,
         };
       }
 
@@ -238,11 +255,12 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
       setMinInvestment('10');
       setMaxInvestment('');
       setNumHolders('');
+      setMarketValuation('');
       setDescription('');
       setRatings({
-        location_rating: 5, condition_rating: 5, roi_rating: 5, liquidity_rating: 5,
-        mechanical_rating: 5, paint_rating: 5, market_demand_rating: 5,
-        hours_rating: 5, maintenance_rating: 5, resale_rating: 5,
+        engine_machinery: 8, cabin_machinery: 8, tires_machinery: 8, paint_machinery: 8, hydraulic_machinery: 8, maintenance_machinery: 8,
+        engine_vehicle: 8, drive_vehicle: 8, paint_vehicle: 8, gearbox_vehicle: 8, tires_vehicle: 8,
+        paint_realestate: 8, floors_realestate: 8, bathrooms_realestate: 8, rooms_realestate: 8, kitchen_realestate: 8, structure_realestate: 8, location_realestate: 8
       });
       // Reset metadata fields
       setLocation('Caracas, Venezuela'); setAreaM2(''); setPropertyType('Residencial');
@@ -651,50 +669,111 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               )}
             </div>
 
+            {/* Valor Real de Mercado (USD) — Gancho de Inversión / Plusvalía */}
+            <div className="bg-neutral-900/90 border border-emerald-500/30 p-3.5 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  Valor Real de Mercado (USD)
+                </div>
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/40">
+                  Gancho de Inversión
+                </span>
+              </div>
+              <div>
+                <label className="block text-[11px] text-neutral-300 mb-1">
+                  Valor Comercial Estimado de Mercado (USD)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={marketValuation}
+                  onChange={(e) => setMarketValuation(e.target.value)}
+                  placeholder="Ej. 170000"
+                  className="w-full bg-neutral-950 border border-emerald-500/30 text-white font-mono rounded-lg p-2 text-xs outline-none focus:border-emerald-400"
+                />
+              </div>
+              {(() => {
+                const parsedMkt = Number(marketValuation) || 0;
+                const appreciation = parsedMkt - parsedValuation;
+                const gainPerHolder = totalHold3rs > 0 && appreciation > 0 ? Math.floor(appreciation / totalHold3rs) : 0;
+                if (parsedMkt > parsedValuation && parsedValuation > 0) {
+                  return (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5 space-y-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-neutral-300">Precio Adquisición: <strong className="text-white font-mono">${parsedValuation.toLocaleString()}</strong></span>
+                        <span className="text-emerald-400 font-bold font-mono">Valor Mercado: ${parsedMkt.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-emerald-500/20">
+                        <span className="font-extrabold text-emerald-300">Plusvalía Proyectada:</span>
+                        <span className="font-extrabold text-emerald-400 font-mono">+${appreciation.toLocaleString()} USDT</span>
+                      </div>
+                      {gainPerHolder > 0 && (
+                        <p className="text-[10px] text-emerald-300/90 font-medium text-right">
+                          🔥 Ganancia estimada: <strong className="text-white font-mono">+${gainPerHolder.toLocaleString()} USDT</strong> por Holder
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              <p className="text-[10px] text-neutral-400 leading-relaxed">
+                💡 Opcional. Permite resaltar el descuento de compra y la ganancia por revalorización en la ficha técnica del inversionista.
+              </p>
+            </div>
+
             {/* Ratings 0-10 por Categoría */}
             <div className="bg-neutral-900/90 border border-amber-500/30 p-3.5 rounded-2xl space-y-3">
               <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold uppercase tracking-wider">
                 ★ Calificación del Activo (0–10)
               </div>
               {(() => {
-                const ratingItems = category === 'real_estate' ? [
-                  { key: 'location_rating', label: '📍 Ubicación' },
-                  { key: 'condition_rating', label: '🏠 Estado del Inmueble' },
-                  { key: 'roi_rating', label: '📈 Rentabilidad (ROI)' },
-                  { key: 'liquidity_rating', label: '💧 Liquidez / Salida' },
+                const ratingItems = category === 'heavy_machinery' ? [
+                  { key: 'engine_machinery', label: '⚙️ Motor' },
+                  { key: 'cabin_machinery', label: '💺 Cabina' },
+                  { key: 'tires_machinery', label: '🛞 Neumáticos' },
+                  { key: 'paint_machinery', label: '🎨 Pintura' },
+                  { key: 'hydraulic_machinery', label: '💧 Bomba Hidráulica' },
+                  { key: 'maintenance_machinery', label: '🔬 Mantenimiento' },
                 ] : category === 'fleet' ? [
-                  { key: 'mechanical_rating', label: '🔧 Estado Mecánico' },
-                  { key: 'paint_rating', label: '🎨 Estado Visual / Pintura' },
-                  { key: 'market_demand_rating', label: '📊 Demanda de Mercado' },
-                  { key: 'roi_rating', label: '📈 Rentabilidad (ROI)' },
+                  { key: 'engine_vehicle', label: '⚙️ Motor' },
+                  { key: 'drive_vehicle', label: '🏎️ Tren' },
+                  { key: 'paint_vehicle', label: '🎨 Pintura' },
+                  { key: 'gearbox_vehicle', label: '🕹️ Caja' },
+                  { key: 'tires_vehicle', label: '🛞 Neumáticos' },
                 ] : [
-                  { key: 'hours_rating', label: '⏱️ Estado por Horas' },
-                  { key: 'maintenance_rating', label: '🔬 Mantenimiento' },
-                  { key: 'resale_rating', label: '💰 Valor de Reventa' },
-                  { key: 'roi_rating', label: '📈 Rentabilidad (ROI)' },
+                  { key: 'paint_realestate', label: '🎨 Pintura' },
+                  { key: 'floors_realestate', label: '🪨 Pisos' },
+                  { key: 'bathrooms_realestate', label: '🚿 Baños' },
+                  { key: 'rooms_realestate', label: '🛏️ Cuartos' },
+                  { key: 'kitchen_realestate', label: '🍳 Cocina' },
+                  { key: 'structure_realestate', label: '🏢 Estructura' },
+                  { key: 'location_realestate', label: '📍 Ubicación' },
                 ];
                 return (
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {ratingItems.map(({ key, label }) => {
-                      const val = ratings[key] ?? 5;
+                      const val = ratings[key] ?? 8;
                       const color = val >= 8 ? 'text-emerald-400' : val >= 5 ? 'text-amber-400' : 'text-rose-400';
                       const badge = val >= 8 ? 'bg-emerald-500/15 border-emerald-500/30' : val >= 5 ? 'bg-amber-500/15 border-amber-500/30' : 'bg-rose-500/15 border-rose-500/30';
                       return (
-                        <div key={key} className="flex items-center gap-2">
-                          <span className="text-[11px] text-neutral-300 flex-1">{label}</span>
-                          <div className="flex items-center gap-1">
+                        <div key={key} className="flex items-center justify-between gap-1.5 bg-neutral-950/60 p-2 rounded-xl border border-white/5">
+                          <span className="text-[11px] text-neutral-300 truncate">{label}</span>
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
                               onClick={() => updateRating(key, -1)}
-                              className="w-6 h-6 rounded-lg bg-neutral-800 hover:bg-rose-500/20 text-neutral-300 text-xs font-bold flex items-center justify-center transition-colors"
+                              className="w-5 h-5 rounded bg-neutral-800 hover:bg-rose-500/20 text-neutral-300 text-xs font-bold flex items-center justify-center transition-colors"
                             >−</button>
-                            <span className={`w-10 text-center font-extrabold text-sm font-mono border rounded-lg px-1.5 py-0.5 ${color} ${badge}`}>
+                            <span className={`w-8 text-center font-extrabold text-xs font-mono border rounded px-1 py-0.5 ${color} ${badge}`}>
                               {val}
                             </span>
                             <button
                               type="button"
                               onClick={() => updateRating(key, +1)}
-                              className="w-6 h-6 rounded-lg bg-neutral-800 hover:bg-emerald-500/20 text-neutral-300 text-xs font-bold flex items-center justify-center transition-colors"
+                              className="w-5 h-5 rounded bg-neutral-800 hover:bg-emerald-500/20 text-neutral-300 text-xs font-bold flex items-center justify-center transition-colors"
                             >+</button>
                           </div>
                         </div>

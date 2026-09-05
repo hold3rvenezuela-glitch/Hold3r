@@ -297,6 +297,58 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
           />
         </div>
 
+        {/* ── Gancho de Inversión (Revalorización de Mercado / Plusvalía) ── */}
+        {(() => {
+          const mktVal = Number(asset.metadata?.market_valuation || asset.market_valuation) || 0;
+          const acqVal = Number(asset.total_valuation) || 0;
+          const numH = Number(asset.num_holders) || (isFixedQuota && totalShares > 0 ? totalShares : 0);
+          const appreciation = mktVal - acqVal;
+          const gainPerHolder = numH > 0 && appreciation > 0 ? Math.floor(appreciation / numH) : 0;
+
+          if (mktVal > acqVal && acqVal > 0) {
+            return (
+              <div className="bg-gradient-to-r from-emerald-950/80 via-neutral-900 to-cyan-950/80 border border-emerald-500/40 rounded-2xl p-4 space-y-2.5 shadow-lg shadow-emerald-950/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-emerald-400 animate-pulse" />
+                    Gancho de Inversión • Oportunidad de Plusvalía
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-extrabold px-2 py-0.5 rounded-full border border-emerald-500/40 font-mono">
+                    +{Math.round((appreciation / acqVal) * 100)}% Revalorización
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center bg-neutral-950/60 p-2.5 rounded-xl border border-white/5">
+                  <div className="p-1">
+                    <p className="text-[10px] text-neutral-400 uppercase font-semibold">Precio Adquisición</p>
+                    <p className="text-sm font-extrabold text-white font-mono">${acqVal.toLocaleString()} USDT</p>
+                  </div>
+                  <div className="p-1 border-y sm:border-y-0 sm:border-x border-white/10">
+                    <p className="text-[10px] text-emerald-400 uppercase font-semibold">Valor Real Mercado</p>
+                    <p className="text-sm font-extrabold text-emerald-400 font-mono">${mktVal.toLocaleString()} USD</p>
+                  </div>
+                  <div className="p-1">
+                    <p className="text-[10px] text-cyan-400 uppercase font-semibold">Plusvalía Proyectada</p>
+                    <p className="text-sm font-extrabold text-cyan-300 font-mono">+${appreciation.toLocaleString()} USDT</p>
+                  </div>
+                </div>
+
+                {gainPerHolder > 0 && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2 flex items-center justify-between text-xs">
+                    <span className="text-neutral-300 font-medium flex items-center gap-1">
+                      🔥 Ganancia Estimada por Holder ({numH} cupos):
+                    </span>
+                    <span className="font-extrabold text-emerald-400 font-mono text-sm">
+                      +${gainPerHolder.toLocaleString()} USDT
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return null;
+        })()}
+
         {/* ── Ficha Técnica Detallada ── */}
         {asset.metadata && Object.keys(asset.metadata).length > 0 && (
           <div className="bg-neutral-900/90 border border-white/10 rounded-2xl p-4 space-y-3">
@@ -348,10 +400,14 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
         {/* ── Ratings del Activo ── */}
         {asset.ratings && Object.keys(asset.ratings).length > 0 && (() => {
           const ratingLabels = {
-            location: '📍 Ubicación', condition: '🏠 Estado', roi: '📈 ROI',
-            liquidity: '💧 Liquidez', mechanical: '🔧 Mecánico', paint: '🎨 Visual',
-            market_demand: '📊 Demanda', hours: '⏱️ Horas', maintenance: '🔬 Mantenimiento',
-            resale: '💰 Reventa'
+            // Maquinaria
+            engine: '⚙️ Motor', cabin: '💺 Cabina', tires: '🛞 Neumáticos', paint: '🎨 Pintura', hydraulic: '💧 Bomba Hidráulica', maintenance: '🔬 Mantenimiento',
+            // Vehículo
+            drive: '🏎️ Tren', gearbox: '🕹️ Caja',
+            // Bienes Raíces
+            floors: '🪨 Pisos', bathrooms: '🚿 Baños', rooms: '🛏️ Cuartos', kitchen: '🍳 Cocina', structure: '🏢 Estructura', location: '📍 Ubicación',
+            // Fallbacks legacy
+            condition: '🏠 Estado', roi: '📈 ROI', liquidity: '💧 Liquidez', mechanical: '🔧 Mecánico', market_demand: '📊 Demanda', hours: '⏱️ Horas', resale: '💰 Reventa'
           };
           const ratingEntries = Object.entries(asset.ratings).filter(([, v]) => v !== null && v !== undefined);
           return (
