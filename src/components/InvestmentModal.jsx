@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles, Wallet, Globe, RefreshCw, Clock, Lock, Check, UserPlus, Users } from 'lucide-react';
+import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles, Wallet, Globe, RefreshCw, Clock, Lock, Check, UserPlus, Users, TrendingUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { investInAsset, reserveAssetSlot, getActiveReservation, releaseAssetReservation, joinAssetWaitlist, fetchActiveReservationsSumForAsset } from '../services/api';
 import { sendUsdtWeb3Transfer, isWeb3Available } from '../services/web3';
