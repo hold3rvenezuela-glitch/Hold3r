@@ -202,6 +202,7 @@ export async function connectWeb3Wallet() {
 /**
  * Ejecuta y firma la llamada al contrato USDT según la arquitectura elegida.
  * Compatible con WalletConnect provider, window.ethereum y window.trustwallet.
+ * Incluye verificación previa de gas nativo (BNB/ETH) y codificación exacta EIP-1193.
  */
 export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', provider = null, userAddress = null }) {
   const amountNumber = Number(amountUsdt);
@@ -245,17 +246,37 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     throw new Error('Billetera no conectada. Conecta tu wallet Web3 o autoriza la sesión primero.');
   }
 
-  // Contrato Inteligente USDT para EVM
-  const contractAddress = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
-  
-  // Selector del método ERC20/BEP20: transfer(address,uint256) -> 0xa9059cbb
-  const cleanRecipient = targetTreasury.replace('0x', '').padStart(64, '0');
-  
-  // Decimales estándar
-  const decimals = (network === 'ERC20' || network === 'BEP20') ? 18 : 6;
+  // 1. Validación previa de Saldo de Gas Nativo (BNB/ETH) en la billetera
+  try {
+    const balanceHex = await activeProvider.request({
+      method: 'eth_getBalance',
+      params: [fromAddress, 'latest']
+    });
+    const nativeBalanceWei = BigInt(balanceHex || '0x0');
+    if (nativeBalanceWei <= 0n) {
+      const symbol = network === 'BEP20' ? 'BNB' : 'ETH';
+      throw new Error(`Saldo de gas nativo insuficiente (${symbol}). Necesitas disponer de ${symbol} en tu billetera para cubrir las comisiones de red (gas fees).`);
+    }
+  } catch (gasErr) {
+    if (gasErr.message && gasErr.message.includes('gas nativo insuficiente')) {
+      throw gasErr;
+    }
+    console.warn('No se pudo verificar el saldo de gas previo:', gasErr);
+  }
+
+  // 2. Contrato Inteligente USDT para EVM
+  const rawContractAddress = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
+  const contractAddress = rawContractAddress.trim();
+
+  // 3. Decimales por Estándar Oficial de Red:
+  // - BEP20 (BSC Mainnet USDT): 18 decimales
+  // - ERC20 (Ethereum Mainnet USDT): 6 decimales
+  const decimals = network === 'BEP20' ? 18 : 6;
   const rawAmountBigInt = BigInt(Math.floor(amountNumber * Math.pow(10, decimals)));
   const hexAmount = rawAmountBigInt.toString(16).padStart(64, '0');
-  
+
+  // Selector del método ERC20/BEP20: transfer(address,uint256) -> 0xa9059cbb
+  const cleanRecipient = targetTreasury.replace(/^0x/i, '').toLowerCase().padStart(64, '0');
   const dataPayload = `0xa9059cbb${cleanRecipient}${hexAmount}`;
 
   try {
@@ -264,8 +285,8 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
       method: 'eth_sendTransaction',
       params: [{
         from: fromAddress,
-        to: contractAddress,
-        data: dataPayload,
+        to: contractAddress, // Dirección oficial del Contrato Inteligente USDT
+        data: dataPayload,   // Firma ERC20 transfer(tesorería, monto)
       }]
     });
 
