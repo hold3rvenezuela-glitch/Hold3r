@@ -30,10 +30,17 @@ export default function App() {
   // ── Inicialización ──────────────────────────────────────────────────────────
   const initApp = async () => {
     setLoading(true);
+    // Timeout de seguridad de 4s para evitar pantallas de carga congeladas en redes móviles lentas
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 4000);
+
     try {
       // 1. Cargar catálogo de activos reales desde Supabase
       const loadedAssets = await fetchAssets();
-      setAssets(loadedAssets);
+      if (loadedAssets && loadedAssets.length > 0) {
+        setAssets(loadedAssets);
+      }
 
       // 2. Verificar sesión activa en Supabase Auth
       const session = await getCurrentSession();
@@ -43,6 +50,7 @@ export default function App() {
     } catch (err) {
       console.error('Error al inicializar la aplicación:', err);
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   };
