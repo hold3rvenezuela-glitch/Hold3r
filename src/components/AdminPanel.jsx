@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Image as ImageIcon, Loader2, X, Shield, Trash2, Plus } from 'lucide-react';
-import { createAsset, updateAssetStatus, deleteAsset, uploadAssetImage, uploadMultipleAssetImages } from '../services/api';
+import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Loader2, X, Shield, Trash2, Plus, Users } from 'lucide-react';
+import { createAsset, updateAssetStatus, deleteAsset, uploadMultipleAssetImages } from '../services/api';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {
   const [loading, setLoading] = useState(false);
@@ -26,17 +26,36 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const [minInvestment, setMinInvestment] = useState('10');
   const [maxInvestment, setMaxInvestment] = useState('');
 
-  // Dynamic Technical Specs State
-  // Bienes Raíces (real_estate)
+  // ── Bienes Raíces (real_estate) ──────────────────────────────
   const [location, setLocation] = useState('Caracas, Venezuela');
-  const [areaM2, setAreaM2] = useState('180');
-  const [propertyType, setPropertyType] = useState('Residencial / Comercial');
+  const [areaM2, setAreaM2] = useState('');
+  const [propertyType, setPropertyType] = useState('Residencial');
+  const [bedrooms, setBedrooms] = useState('');
+  const [bathrooms, setBathrooms] = useState('');
+  const [flooring, setFlooring] = useState('');
+  const [amenities, setAmenities] = useState('');
 
-  // Vehículos (fleet) y Maquinaria (heavy_machinery)
-  const [brand, setBrand] = useState('RAM / Caterpillar');
-  const [modelName, setModelName] = useState('2025 Spec Model');
-  const [manufactureYear, setManufactureYear] = useState('2024');
-  const [usageStats, setUsageStats] = useState('0 km / Horas Nuevas');
+  // ── Vehículos (fleet) ────────────────────────────────────────
+  const [vin, setVin] = useState('');
+  const [mileage, setMileage] = useState('');
+  const [tireCondition, setTireCondition] = useState('');
+  const [transmission, setTransmission] = useState('Automática');
+  const [paintCondition, setPaintCondition] = useState('Excelente');
+
+  // ── Maquinaria Pesada (heavy_machinery) ──────────────────────
+  const [brand, setBrand] = useState('');
+  const [modelName, setModelName] = useState('');
+  const [manufactureYear, setManufactureYear] = useState('');
+  const [machineHours, setMachineHours] = useState('');
+  const [loadCapacity, setLoadCapacity] = useState('');
+  const [maintenanceStatus, setMaintenanceStatus] = useState('Al día');
+
+  // HOLD3RS Calculator
+  const parsedValuation = Number(totalValuation) || 0;
+  const parsedMin = Number(minInvestment) || 0;
+  const parsedMax = Number(maxInvestment) || 0;
+  const isFixedQuota = parsedMin > 0 && parsedMax > 0 && parsedMin === parsedMax;
+  const totalHold3rs = isFixedQuota && parsedMin > 0 ? Math.floor(parsedValuation / parsedMin) : 0;
 
   if (userProfile?.role !== 'admin') {
     return (
@@ -91,15 +110,39 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         throw new Error('Completa todos los campos requeridos para publicar el activo.');
       }
 
-      // Ensamblar ficha técnica dinámica
-      let techSpecHeader = '';
+      // Construir objeto metadata técnica según categoría
+      let metadata = {};
       if (category === 'real_estate') {
-        techSpecHeader = `📍 Ubicación: ${location} | 📐 Área: ${areaM2} m² | 🏢 Tipo: ${propertyType}\n\n`;
-      } else {
-        techSpecHeader = `⚙️ Marca: ${brand} | 🚜 Modelo: ${modelName} | 📅 Año: ${manufactureYear} | 📊 Uso: ${usageStats}\n\n`;
+        metadata = {
+          location,
+          area_m2: areaM2,
+          property_type: propertyType,
+          bedrooms,
+          bathrooms,
+          flooring,
+          amenities
+        };
+      } else if (category === 'fleet') {
+        metadata = {
+          vin,
+          mileage,
+          tire_condition: tireCondition,
+          transmission,
+          paint_condition: paintCondition,
+          brand,
+          model: modelName,
+          year: manufactureYear
+        };
+      } else if (category === 'heavy_machinery') {
+        metadata = {
+          brand,
+          model: modelName,
+          year: manufactureYear,
+          machine_hours: machineHours,
+          load_capacity: loadCapacity,
+          maintenance_status: maintenanceStatus
+        };
       }
-
-      const fullDescription = techSpecHeader + description;
 
       const defaultFallbackImg = category === 'real_estate' 
         ? 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80'
@@ -117,7 +160,8 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         status,
         legal_contract_url: legalContractUrl,
         images: finalImages,
-        description: fullDescription,
+        description,
+        metadata,
         min_investment: minInvestment ? Number(minInvestment) : 10,
         max_investment: maxInvestment ? Number(maxInvestment) : null
       });
@@ -134,6 +178,11 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
       setMinInvestment('10');
       setMaxInvestment('');
       setDescription('');
+      // Reset metadata fields
+      setLocation('Caracas, Venezuela'); setAreaM2(''); setPropertyType('Residencial');
+      setBedrooms(''); setBathrooms(''); setFlooring(''); setAmenities('');
+      setVin(''); setMileage(''); setTireCondition(''); setTransmission('Automática'); setPaintCondition('Excelente');
+      setBrand(''); setModelName(''); setManufactureYear(''); setMachineHours(''); setLoadCapacity(''); setMaintenanceStatus('Al día');
 
       if (onAssetCreated) {
         onAssetCreated(newAsset);
@@ -258,89 +307,140 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
             <div className="bg-neutral-900/90 border border-white/10 p-3.5 rounded-2xl space-y-3">
               <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold uppercase tracking-wider">
                 <Sliders className="w-3.5 h-3.5" />
-                Especificaciones Técnicas ({category === 'real_estate' ? 'Bienes Raíces' : category === 'heavy_machinery' ? 'Maquinaria' : 'Vehículos'})
+                Ficha Técnica — {category === 'real_estate' ? '🏢 Bienes Raíces' : category === 'heavy_machinery' ? '🚜 Maquinaria' : '🚚 Vehículos'}
               </div>
 
-              {category === 'real_estate' ? (
+              {/* ── BIENES RAÍCES ── */}
+              {category === 'real_estate' && (
                 <>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">Ubicación / Ciudad</label>
-                      <input
-                        type="text"
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        placeholder="Caracas, VE"
-                        className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
-                      />
+                      <label className="block text-[11px] text-neutral-300 mb-1">📍 Ubicación / Ciudad</label>
+                      <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Caracas, VE" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">Área (m²)</label>
-                      <input
-                        type="text"
-                        value={areaM2}
-                        onChange={(e) => setAreaM2(e.target.value)}
-                        placeholder="180 m²"
-                        className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
-                      />
+                      <label className="block text-[11px] text-neutral-300 mb-1">📐 Área total (m²)</label>
+                      <input type="text" value={areaM2} onChange={e => setAreaM2(e.target.value)} placeholder="180" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] text-neutral-300 mb-1">Tipo de Propiedad</label>
-                    <input
-                      type="text"
-                      value={propertyType}
-                      onChange={(e) => setPropertyType(e.target.value)}
-                      placeholder="Oficina Corporativa / Residencial"
-                      className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
-                    />
+                    <label className="block text-[11px] text-neutral-300 mb-1">🏢 Tipo de Propiedad</label>
+                    <input type="text" value={propertyType} onChange={e => setPropertyType(e.target.value)} placeholder="Oficina Corporativa / Residencial" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">🛏 Habitaciones</label>
+                      <input type="number" min="0" value={bedrooms} onChange={e => setBedrooms(e.target.value)} placeholder="3" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">🚿 Baños</label>
+                      <input type="number" min="0" value={bathrooms} onChange={e => setBathrooms(e.target.value)} placeholder="2" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">🪨 Tipo de Pisos</label>
+                    <input type="text" value={flooring} onChange={e => setFlooring(e.target.value)} placeholder="Mármol / Porcelanato / Madera" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">✨ Amenidades</label>
+                    <input type="text" value={amenities} onChange={e => setAmenities(e.target.value)} placeholder="Piscina, Gimnasio, Estacionamiento" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                   </div>
                 </>
-              ) : (
+              )}
+
+              {/* ── VEHÍCULOS ── */}
+              {category === 'fleet' && (
                 <>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">Marca</label>
-                      <input
-                        type="text"
-                        value={brand}
-                        onChange={(e) => setBrand(e.target.value)}
-                        placeholder="Caterpillar / RAM"
-                        className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
-                      />
+                      <label className="block text-[11px] text-neutral-300 mb-1">🔩 Marca</label>
+                      <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="RAM / Ford" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">Modelo</label>
-                      <input
-                        type="text"
-                        value={modelName}
-                        onChange={(e) => setModelName(e.target.value)}
-                        placeholder="D8R / 1500 Promaster"
-                        className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
-                      />
+                      <label className="block text-[11px] text-neutral-300 mb-1">🚚 Modelo</label>
+                      <input type="text" value={modelName} onChange={e => setModelName(e.target.value)} placeholder="1500 / Transit" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">Año Fabricación</label>
-                      <input
-                        type="text"
-                        value={manufactureYear}
-                        onChange={(e) => setManufactureYear(e.target.value)}
-                        placeholder="2024"
-                        className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
-                      />
+                      <label className="block text-[11px] text-neutral-300 mb-1">📅 Año</label>
+                      <input type="text" value={manufactureYear} onChange={e => setManufactureYear(e.target.value)} placeholder="2024" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">Uso / Kilometraje</label>
-                      <input
-                        type="text"
-                        value={usageStats}
-                        onChange={(e) => setUsageStats(e.target.value)}
-                        placeholder="0 km / Cero Horas"
-                        className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
-                      />
+                      <label className="block text-[11px] text-neutral-300 mb-1">📏 Kilometraje</label>
+                      <input type="text" value={mileage} onChange={e => setMileage(e.target.value)} placeholder="0 km" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">🔖 Serial / VIN</label>
+                    <input type="text" value={vin} onChange={e => setVin(e.target.value)} placeholder="1HGBH41JXMN109186" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs font-mono" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">⚙️ Transmisión</label>
+                      <select value={transmission} onChange={e => setTransmission(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
+                        <option>Automática</option>
+                        <option>Manual</option>
+                        <option>CVT</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">🛞 Estado Cauchos</label>
+                      <select value={tireCondition} onChange={e => setTireCondition(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
+                        <option value="">Seleccionar...</option>
+                        <option>Nuevos</option>
+                        <option>Bueno</option>
+                        <option>Regular</option>
+                        <option>Necesita Cambio</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">🎨 Estado de Pintura</label>
+                    <select value={paintCondition} onChange={e => setPaintCondition(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
+                      <option>Excelente</option>
+                      <option>Bueno</option>
+                      <option>Regular (Rayones menores)</option>
+                      <option>Necesita Retoque</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* ── MAQUINARIA PESADA ── */}
+              {category === 'heavy_machinery' && (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">🏭 Marca</label>
+                      <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="Caterpillar / Komatsu" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">🔧 Modelo</label>
+                      <input type="text" value={modelName} onChange={e => setModelName(e.target.value)} placeholder="D8R / PC200" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">📅 Año Fabricación</label>
+                      <input type="text" value={manufactureYear} onChange={e => setManufactureYear(e.target.value)} placeholder="2022" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">⏱️ Horas-Máquina</label>
+                      <input type="text" value={machineHours} onChange={e => setMachineHours(e.target.value)} placeholder="0 hrs" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">🏋️ Capacidad de Carga</label>
+                    <input type="text" value={loadCapacity} onChange={e => setLoadCapacity(e.target.value)} placeholder="40 toneladas" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">🔬 Estado de Mantenimiento</label>
+                    <select value={maintenanceStatus} onChange={e => setMaintenanceStatus(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
+                      <option>Al día</option>
+                      <option>Revisión reciente</option>
+                      <option>Requiere servicio próximo</option>
+                    </select>
                   </div>
                 </>
               )}
@@ -421,8 +521,30 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                 </div>
               </div>
               <p className="text-[10px] text-neutral-400 leading-relaxed pt-1">
-                💡 <strong>Modo Cuota Fija:</strong> Si la Inversión Mínima es igual a la Inversión Máxima (ej. $13,000 USDT), el activo se fraccionará en cuotas fijas indivisibles.
+                💡 <strong>Modo Cuota Fija:</strong> Si Mínima = Máxima (ej. $13,000 USDT), el activo se fraccionará en cuotas fijas indivisibles.
               </p>
+
+              {/* ── HOLD3RS Calculator ─────────────────── */}
+              {isFixedQuota && parsedValuation > 0 && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between gap-3 mt-1">
+                  <div className="flex items-center gap-2 text-emerald-300">
+                    <Users className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">HOLD3RS Totales</p>
+                      <p className="text-[11px] text-neutral-300">${parsedValuation.toLocaleString()} ÷ ${parsedMin.toLocaleString()} USDT/cuota</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-2xl font-extrabold text-white font-mono">{totalHold3rs}</span>
+                    <p className="text-[10px] text-emerald-400 font-bold">HOLD3RS</p>
+                  </div>
+                </div>
+              )}
+              {!isFixedQuota && parsedMin > 0 && parsedMax > 0 && parsedMin !== parsedMax && (
+                <p className="text-[10px] text-amber-400 font-medium pt-1">
+                  ⚠️ Mínimo ≠ Máximo: modo de inversión libre (rango ${parsedMin.toLocaleString()} – ${parsedMax.toLocaleString()} USDT).
+                </p>
+              )}
             </div>
 
             <div>

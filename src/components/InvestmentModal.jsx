@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles, Wallet, Globe, RefreshCw, Clock, Lock, Check, UserPlus } from 'lucide-react';
+import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles, Wallet, Globe, RefreshCw, Clock, Lock, Check, UserPlus, Users } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { investInAsset, reserveAssetSlot, getActiveReservation, releaseAssetReservation, joinAssetWaitlist, fetchActiveReservationsSumForAsset } from '../services/api';
 import { sendUsdtWeb3Transfer, isWeb3Available } from '../services/web3';
 import { useWeb3ModalAccount } from '@web3modal/ethers/react';
 import AssetImageCarousel from './AssetImageCarousel';
+
+
+// Helper: fila de especificación técnica (icon + label + value)
+const SpecRow = ({ icon, label, value, mono = false, fullWidth = false }) => (
+  <div className={fullWidth ? 'col-span-2' : ''}>
+    <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">{icon} {label}</span>
+    <span className={`text-xs font-semibold text-white block truncate ${mono ? 'font-mono' : ''}`}>{value}</span>
+  </div>
+);
 
 export default function InvestmentModal({ asset, userProfile, wallet, onClose, onSuccess, onOpenWeb3Modal }) {
   const { address: wcAddress, isConnected: wcIsConnected } = useWeb3ModalAccount();
@@ -287,6 +296,78 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
             heightClass="h-44 sm:h-52"
           />
         </div>
+
+        {/* ── Ficha Técnica Detallada ── */}
+        {asset.metadata && Object.keys(asset.metadata).length > 0 && (
+          <div className="bg-neutral-900/90 border border-white/10 rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-400">
+              <Sparkles className="w-3.5 h-3.5" />
+              Ficha Técnica del Activo
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {/* Bienes Raíces */}
+              {asset.category === 'real_estate' && (
+                <>
+                  {asset.metadata.location && <SpecRow icon="📍" label="Ubicación" value={asset.metadata.location} />}
+                  {asset.metadata.area_m2 && <SpecRow icon="📐" label="Área" value={`${asset.metadata.area_m2} m²`} />}
+                  {asset.metadata.property_type && <SpecRow icon="🏢" label="Tipo" value={asset.metadata.property_type} />}
+                  {asset.metadata.bedrooms && <SpecRow icon="🛏" label="Habitaciones" value={asset.metadata.bedrooms} />}
+                  {asset.metadata.bathrooms && <SpecRow icon="🚿" label="Baños" value={asset.metadata.bathrooms} />}
+                  {asset.metadata.flooring && <SpecRow icon="🪨" label="Pisos" value={asset.metadata.flooring} />}
+                  {asset.metadata.amenities && <SpecRow icon="✨" label="Amenidades" value={asset.metadata.amenities} fullWidth />}
+                </>
+              )}
+              {/* Vehículos */}
+              {asset.category === 'fleet' && (
+                <>
+                  {asset.metadata.brand && <SpecRow icon="🔩" label="Marca" value={asset.metadata.brand} />}
+                  {asset.metadata.model && <SpecRow icon="🚚" label="Modelo" value={asset.metadata.model} />}
+                  {asset.metadata.year && <SpecRow icon="📅" label="Año" value={asset.metadata.year} />}
+                  {asset.metadata.mileage && <SpecRow icon="📏" label="Kilometraje" value={asset.metadata.mileage} />}
+                  {asset.metadata.vin && <SpecRow icon="🔖" label="Serial / VIN" value={asset.metadata.vin} mono fullWidth />}
+                  {asset.metadata.transmission && <SpecRow icon="⚙️" label="Transmisión" value={asset.metadata.transmission} />}
+                  {asset.metadata.tire_condition && <SpecRow icon="🛞" label="Cauchos" value={asset.metadata.tire_condition} />}
+                  {asset.metadata.paint_condition && <SpecRow icon="🎨" label="Pintura" value={asset.metadata.paint_condition} />}
+                </>
+              )}
+              {/* Maquinaria Pesada */}
+              {asset.category === 'heavy_machinery' && (
+                <>
+                  {asset.metadata.brand && <SpecRow icon="🏭" label="Marca" value={asset.metadata.brand} />}
+                  {asset.metadata.model && <SpecRow icon="🔧" label="Modelo" value={asset.metadata.model} />}
+                  {asset.metadata.year && <SpecRow icon="📅" label="Año" value={asset.metadata.year} />}
+                  {asset.metadata.machine_hours && <SpecRow icon="⏱️" label="Horas-Máquina" value={asset.metadata.machine_hours} />}
+                  {asset.metadata.load_capacity && <SpecRow icon="🏋️" label="Capacidad" value={asset.metadata.load_capacity} />}
+                  {asset.metadata.maintenance_status && <SpecRow icon="🔬" label="Mantenimiento" value={asset.metadata.maintenance_status} />}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── HOLD3RS Occupancy Indicator ── */}
+        {isFixedQuota && totalShares > 0 && (
+          <div className="bg-neutral-900/90 border border-cyan-500/30 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" /> HOLD3RS
+              </span>
+              <span className="text-xs font-mono font-extrabold text-white">
+                {fundedShares} <span className="text-neutral-400 font-normal">de</span> {totalShares} <span className="text-neutral-400 font-normal">ocupados</span>
+              </span>
+            </div>
+            <div className="w-full bg-neutral-800 rounded-full h-2 overflow-hidden">
+              <div
+                className="h-2 rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all duration-700"
+                style={{ width: `${totalShares > 0 ? Math.min(100, (fundedShares / totalShares) * 100) : 0}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px] font-mono">
+              <span className="text-emerald-400 font-semibold">{Math.max(0, totalShares - fundedShares)} cupos libres</span>
+              <span className="text-neutral-400">${fixedQuotaAmount?.toLocaleString()} USDT / cuota</span>
+            </div>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs p-3 rounded-xl font-medium flex items-center gap-2">

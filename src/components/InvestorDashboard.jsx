@@ -11,7 +11,8 @@ import {
   ShieldCheck,
   Zap,
   Sparkles,
-  PieChart
+  PieChart,
+  Users
 } from 'lucide-react';
 import AssetImageCarousel from './AssetImageCarousel';
 
@@ -140,6 +141,12 @@ export default function InvestorDashboard({
             const funded = Number(asset.funded_amount);
             const percent = valuation > 0 ? Math.min(100, Math.round((funded / valuation) * 100)) : 0;
             const remaining = Math.max(0, valuation - funded);
+            const minInv = Number(asset.min_investment || 0);
+            const maxInv = Number(asset.max_investment || 0);
+            const assetIsFixedQuota = minInv > 0 && maxInv > 0 && minInv === maxInv;
+            const totalH3rs = assetIsFixedQuota && minInv > 0 ? Math.floor(valuation / minInv) : 0;
+            const fundedH3rs = assetIsFixedQuota && minInv > 0 ? Math.floor(funded / minInv) : 0;
+            const freeH3rs = Math.max(0, totalH3rs - fundedH3rs);
             const assetImagesList = Array.isArray(asset.images) && asset.images.length > 0
               ? asset.images
               : ['https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80'];
@@ -219,6 +226,27 @@ export default function InvestorDashboard({
                       <span>Recolectado: <strong>${funded.toLocaleString()} USDT</strong></span>
                       <span>Restante: <strong>${remaining.toLocaleString()} USDT</strong></span>
                     </div>
+
+                    {/* HOLD3RS Occupancy */}
+                    {assetIsFixedQuota && totalH3rs > 0 && (
+                      <div className="bg-neutral-900/80 border border-cyan-500/20 rounded-xl p-2.5 space-y-1.5 mt-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1">
+                            <Users className="w-3 h-3" /> HOLD3RS
+                          </span>
+                          <span className="text-[11px] font-mono font-extrabold text-white">
+                            {fundedH3rs}/{totalH3rs}
+                            <span className="text-neutral-500 font-normal ml-1">({freeH3rs} libres)</span>
+                          </span>
+                        </div>
+                        <div className="w-full bg-neutral-700 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500"
+                            style={{ width: `${totalH3rs > 0 ? Math.min(100, (fundedH3rs / totalH3rs) * 100) : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Action Button */}

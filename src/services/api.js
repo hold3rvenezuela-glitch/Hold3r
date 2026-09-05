@@ -292,6 +292,7 @@ export async function createAsset(assetData) {
   const dbPayload = { ...payload };
   if (assetData.min_investment) dbPayload.min_investment = Number(assetData.min_investment);
   if (assetData.max_investment) dbPayload.max_investment = Number(assetData.max_investment);
+  if (assetData.metadata && Object.keys(assetData.metadata).length > 0) dbPayload.metadata = assetData.metadata;
 
   let { data, error } = await supabase
     .from(TABLES.ASSETS)
