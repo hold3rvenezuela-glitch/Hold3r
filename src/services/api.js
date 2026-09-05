@@ -223,14 +223,14 @@ export async function uploadAssetImage(file) {
     const filePath = `asset-images/${fileName}`;
 
     // Intentar subida a Supabase Storage (bucket 'assets')
-    const { error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('assets')
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false
       });
 
-    if (!uploadError) {
+    if (!uploadError && uploadData) {
       const { data: publicUrlData } = supabase.storage
         .from('assets')
         .getPublicUrl(filePath);
@@ -239,10 +239,10 @@ export async function uploadAssetImage(file) {
         return publicUrlData.publicUrl;
       }
     } else {
-      console.warn('Aviso al subir foto a Supabase Storage (usando fallback local):', uploadError.message);
+      console.warn('Aviso al subir foto a Supabase Storage (usando fallback Data URL):', uploadError?.message);
     }
   } catch (err) {
-    console.warn('Excepción en Supabase Storage (usando fallback local):', err.message);
+    console.warn('Excepción en Supabase Storage (usando fallback Data URL):', err.message);
   }
 
   // Fallback seguro a Data URL (base64) para compatibilidad total en móviles/dev
@@ -263,30 +263,62 @@ export async function createAsset(assetData) {
     funded_amount: Number(assetData.funded_amount || 0),
     status: assetData.status || 'funding',
     legal_contract_url: assetData.legal_contract_url || 'https://hold3r.io/contracts/legal_spec.pdf',
-    images: assetData.images || [
-      'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80'
-    ],
-    min_investment: assetData.min_investment ? Number(assetData.min_investment) : 10,
-    max_investment: assetData.max_investment ? Number(assetData.max_investment) : null,
+    images: (assetData.images && assetData.images.length > 0 && assetData.images[0].trim()) 
+      ? assetData.images 
+      : ['https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80'],
     created_at: new Date().toISOString()
   };
 
-  try {
-    const { data, error } = await supabase
+  const dbPayload = { ...payload };
+  if (assetData.min_investment) dbPayload.min_investment = Number(assetData.min_investment);
+  if (assetData.max_investment) dbPayload.max_investment = Number(assetData.max_investment);
+
+  let { data, error } = await supabase
+    .from(TABLES.ASSETS)
+    .insert(dbPayload)
+    .select()
+    .single();
+
+  // Si falla por columna inexistente (min_investment), reintentar sin columnas opcionales
+  if (error && (error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('min_investment'))) {
+    console.warn('Reintentando inserción sin columnas opcionales en Supabase:', error.message);
+    const retryRes = await supabase
       .from(TABLES.ASSETS)
       .insert(payload)
       .select()
       .single();
 
-    if (error) {
-      console.warn('Aviso de inserción en Supabase (retornando activo creado):', error.message);
-      return { id: generateUUID(), ...payload };
-    }
-    return data;
-  } catch (err) {
-    console.warn('Error en la llamada a Supabase:', err.message);
-    return { id: generateUUID(), ...payload };
+    data = retryRes.data;
+    error = retryRes.error;
   }
+
+  if (error) {
+    console.error('Error al insertar activo en Supabase:', error);
+    throw new Error(`Error de Supabase (${error.code || 'RLS'}): ${error.message || 'Transacción rechazada por la base de datos.'}`);
+  }
+
+  return {
+    ...data,
+    min_investment: assetData.min_investment ? Number(assetData.min_investment) : (data?.min_investment || 10),
+    max_investment: assetData.max_investment ? Number(assetData.max_investment) : (data?.max_investment || null)
+  };
+}
+
+export async function deleteAsset(assetId) {
+  if (!assetId) throw new Error('ID de activo no válido.');
+
+  const { data, error } = await supabase
+    .from(TABLES.ASSETS)
+    .delete()
+    .eq('id', assetId)
+    .select();
+
+  if (error) {
+    console.error('Error al eliminar activo en Supabase:', error);
+    throw new Error(`Error de Supabase al eliminar (${error.code || 'RLS'}): ${error.message}`);
+  }
+
+  return data;
 }
 
 export async function updateAssetStatus(assetId, status) {

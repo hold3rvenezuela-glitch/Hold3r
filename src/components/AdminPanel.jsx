@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Image as ImageIcon, Loader2, X, Shield } from 'lucide-react';
-import { createAsset, updateAssetStatus, uploadAssetImage } from '../services/api';
+import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Image as ImageIcon, Loader2, X, Shield, Trash2 } from 'lucide-react';
+import { createAsset, updateAssetStatus, deleteAsset, uploadAssetImage } from '../services/api';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {
   const [loading, setLoading] = useState(false);
@@ -140,9 +140,28 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const handleStatusChange = async (assetId, newStatus) => {
     try {
       await updateAssetStatus(assetId, newStatus);
-      onRefresh();
+      if (onRefresh) onRefresh();
     } catch (err) {
       alert(err.message || 'Error al cambiar estatus.');
+    }
+  };
+
+  const handleDeleteAsset = async (assetId, assetTitle) => {
+    if (!window.confirm(`¿Estás seguro de eliminar / descartar el activo "${assetTitle}" de Supabase? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      await deleteAsset(assetId);
+      setSuccessMsg(`🗑️ Activo "${assetTitle}" eliminado exitosamente de la base de datos.`);
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('Error al eliminar activo:', err);
+      setErrorMsg(err.message || 'No se pudo eliminar el activo.');
     }
   };
 
@@ -540,7 +559,7 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
                   <label className="text-[11px] text-neutral-400 font-semibold hidden sm:block">Estado:</label>
                   <select
                     value={asset.status}
@@ -551,6 +570,16 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                     <option value="active_rent">Renta Activa</option>
                     <option value="sold">Vendido</option>
                   </select>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAsset(asset.id, asset.title)}
+                    className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1 transition-all"
+                    title="Eliminar / Descartar Borrador"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden md:inline">Eliminar</span>
+                  </button>
                 </div>
               </div>
             ))}

@@ -99,6 +99,7 @@ CREATE POLICY "Usuarios actualizan su propia wallet" ON public.wallets FOR UPDAT
 DROP POLICY IF EXISTS "Lectura pública de activos" ON public.assets;
 DROP POLICY IF EXISTS "Solo admins crean activos" ON public.assets;
 DROP POLICY IF EXISTS "Solo admins actualizan activos" ON public.assets;
+DROP POLICY IF EXISTS "Solo admins eliminan activos" ON public.assets;
 
 -- Políticas para assets
 CREATE POLICY "Lectura pública de activos" ON public.assets FOR SELECT USING (true);
@@ -106,6 +107,9 @@ CREATE POLICY "Solo admins crean activos" ON public.assets FOR INSERT WITH CHECK
   EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
 );
 CREATE POLICY "Solo admins actualizan activos" ON public.assets FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+);
+CREATE POLICY "Solo admins eliminan activos" ON public.assets FOR DELETE USING (
   EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
