@@ -186,9 +186,17 @@ export default function InvestorDashboard({
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          {/* Botón Compartir en WhatsApp */}
+                          {/* Botón Compartir en WhatsApp con mensaje dinámico y link exacto */}
                           <a 
-                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🔥 ¡Oportunidad de Inversión RWA en HOLD3R! 🚀\n\n*${asset.title}*\nValoración: $${valuation.toLocaleString()} USDT\n${asset.metadata?.market_valuation ? `Valor Mercado Estimado: $${Number(asset.metadata.market_valuation).toLocaleString()} USD\n` : ''}\nCompra tu acción aquí: ${window.location.href}`)}`}
+                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                              `¡Mira esta oportunidad en HOLD3R! 🚀\n` +
+                              `*Título del activo:* ${asset.title}\n` +
+                              `*Valoración:* $${valuation.toLocaleString()} USDT\n` +
+                              (asset.metadata?.market_valuation ? `*Valor de mercado estimado:* $${Number(asset.metadata.market_valuation).toLocaleString()} USDT\n` : '') +
+                              (asset.metadata?.market_valuation && totalH3rs > 0 ? `*Ganancia estimada por Holder:* +$${Math.floor((Number(asset.metadata.market_valuation) - valuation) / totalH3rs).toLocaleString()} USDT\n` : '') +
+                              (totalH3rs > 0 ? `*Acciones disponibles:* ${freeH3rs} de ${totalH3rs} libres\n` : '') +
+                              `🔗 Ver activo: ${window.location.origin}/?asset=${asset.id}`
+                            )}`}
                             target="_blank" 
                             rel="noreferrer"
                             className="bg-emerald-500/80 hover:bg-emerald-400 text-neutral-950 p-2 rounded-xl border border-emerald-400/30 transition-all font-bold flex items-center gap-1 shadow-lg"
@@ -197,18 +205,6 @@ export default function InvestorDashboard({
                           >
                             <Share2 className="w-4 h-4" />
                           </a>
-                          {asset.legal_contract_url && (
-                            <a 
-                              href={asset.legal_contract_url} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="bg-neutral-900/80 hover:bg-neutral-900 text-neutral-300 hover:text-white p-2 rounded-xl border border-white/15 transition-colors"
-                              title="Ver Contrato Legal Auditado"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="w-4 h-4 text-emerald-400" />
-                            </a>
-                          )}
                         </div>
                       </div>
                     </>
@@ -225,6 +221,22 @@ export default function InvestorDashboard({
                       {asset.description}
                     </p>
 
+                    {/* Precio por Acción y Cuota Fija por Holder */}
+                    <div className="mt-3 bg-neutral-950/80 p-2.5 rounded-xl border border-white/5 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Precio por Acción</span>
+                        <strong className="font-mono text-cyan-300 text-xs sm:text-sm">
+                          ${(assetIsFixedQuota && minInv > 0 ? minInv : (minInv || 10)).toLocaleString()} USDT
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Cuota Fija Holder</span>
+                        <strong className="font-mono text-emerald-400 text-xs sm:text-sm">
+                          ${(assetIsFixedQuota && minInv > 0 ? minInv : (minInv || 10)).toLocaleString()} USDT
+                        </strong>
+                      </div>
+                    </div>
+
                     {/* Gancho de Inversión (Plusvalía / Ganancia estimada por Holder) en Catálogo */}
                     {(() => {
                       const mktVal = Number(asset.metadata?.market_valuation || asset.market_valuation) || 0;
@@ -234,7 +246,7 @@ export default function InvestorDashboard({
 
                       if (mktVal > valuation && valuation > 0) {
                         return (
-                          <div className="mt-3 bg-gradient-to-r from-emerald-950/70 to-cyan-950/70 border border-emerald-500/30 rounded-xl p-2.5 space-y-1">
+                          <div className="mt-2 bg-gradient-to-r from-emerald-950/70 to-cyan-950/70 border border-emerald-500/30 rounded-xl p-2.5 space-y-1">
                             <div className="flex items-center justify-between text-[10px] uppercase font-bold text-emerald-400">
                               <span className="flex items-center gap-1">
                                 <TrendingUp className="w-3 h-3 text-emerald-400" /> Valor Mercado: ${mktVal.toLocaleString()}

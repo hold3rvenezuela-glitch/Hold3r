@@ -49,6 +49,19 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
     }));
   };
 
+  // ── Ubicación Dinámica (Venezuela e Importación) ──────────────
+  const [selectedCity, setSelectedCity] = useState('Caracas, Venezuela');
+  const [customCity, setCustomCity] = useState('');
+  const [isImported, setIsImported] = useState('no'); // 'no' | 'venezuela_import' | 'usa_import'
+  const [originPort, setOriginPort] = useState('Puerto de Miami, FL (USA)');
+  const [arrivalPort, setArrivalPort] = useState('Puerto Cabello, Carabobo (VE)');
+  const [arrivalDays, setArrivalDays] = useState('25');
+
+  // ── Alquiler Estimado & ROI Reventa ──────────────────────────
+  const [estimatedRentalPrice, setEstimatedRentalPrice] = useState('');
+  const [estimatedRentalPeriod, setEstimatedRentalPeriod] = useState('mensual'); // 'diario' | 'mensual'
+  const [estimatedResaleRoiMonths, setEstimatedResaleRoiMonths] = useState('');
+
   // ── Bienes Raíces (real_estate) ──────────────────────────────
   const [location, setLocation] = useState('Caracas, Venezuela');
   const [areaM2, setAreaM2] = useState('');
@@ -59,11 +72,10 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const [amenities, setAmenities] = useState('');
 
   // ── Vehículos (fleet) ────────────────────────────────────────
+  const [vehicleTitle, setVehicleTitle] = useState('1-1'); // Título 1-1, 2-1, 3-1, etc.
   const [vin, setVin] = useState('');
   const [mileage, setMileage] = useState('');
-  const [tireCondition, setTireCondition] = useState('');
   const [transmission, setTransmission] = useState('Automática');
-  const [paintCondition, setPaintCondition] = useState('Excelente');
 
   // ── Maquinaria Pesada (heavy_machinery) ──────────────────────
   const [brand, setBrand] = useState('');
@@ -142,11 +154,24 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         throw new Error('Completa todos los campos requeridos para publicar el activo.');
       }
 
+      // Resolver ubicación final
+      const finalLocation = selectedCity === 'custom' ? customCity : selectedCity;
+
       // Construir objeto metadata técnica según categoría
-      let metadata = {};
+      let metadata = {
+        location: finalLocation,
+        is_imported: isImported,
+        origin_port: isImported === 'usa_import' ? originPort : null,
+        arrival_port: isImported === 'usa_import' ? arrivalPort : null,
+        arrival_days: isImported === 'usa_import' ? arrivalDays : null,
+        estimated_rental_price: estimatedRentalPrice ? Number(estimatedRentalPrice) : null,
+        estimated_rental_period: estimatedRentalPeriod,
+        estimated_resale_roi_months: estimatedResaleRoiMonths ? Number(estimatedResaleRoiMonths) : null,
+      };
+
       if (category === 'real_estate') {
         metadata = {
-          location,
+          ...metadata,
           area_m2: areaM2,
           property_type: propertyType,
           bedrooms,
@@ -156,17 +181,18 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         };
       } else if (category === 'fleet') {
         metadata = {
+          ...metadata,
+          vehicle_title: vehicleTitle,
           vin,
           mileage,
-          tire_condition: tireCondition,
           transmission,
-          paint_condition: paintCondition,
           brand,
           model: modelName,
           year: manufactureYear
         };
       } else if (category === 'heavy_machinery') {
         metadata = {
+          ...metadata,
           brand,
           model: modelName,
           year: manufactureYear,
@@ -387,6 +413,146 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               </select>
             </div>
 
+            {/* Selector de Ubicación e Importación (Venezuela / USA) */}
+            <div className="bg-neutral-900/90 border border-emerald-500/30 p-3.5 rounded-2xl space-y-3">
+              <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                📍 Ubicación & Origen del Activo
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-neutral-300 mb-1">Ciudad en Venezuela / Ubicación</label>
+                  <select
+                    value={selectedCity}
+                    onChange={(e) => setSelectedCity(e.target.value)}
+                    className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
+                  >
+                    <option value="Caracas, Venezuela">Caracas, Venezuela</option>
+                    <option value="Valencia, Carabobo">Valencia, Carabobo</option>
+                    <option value="Maracaibo, Zulia">Maracaibo, Zulia</option>
+                    <option value="Barquisimeto, Lara">Barquisimeto, Lara</option>
+                    <option value="Maracay, Aragua">Maracay, Aragua</option>
+                    <option value="Puerto La Cruz, Anzoátegui">Puerto La Cruz, Anzoátegui</option>
+                    <option value="Puerto Ordaz, Bolívar">Puerto Ordaz, Bolívar</option>
+                    <option value="Margarita, Nueva Esparta">Margarita, Nueva Esparta</option>
+                    <option value="Mérida, Mérida">Mérida, Mérida</option>
+                    <option value="San Cristóbal, Táchira">San Cristóbal, Táchira</option>
+                    <option value="Maturín, Monagas">Maturín, Monagas</option>
+                    <option value="Barinas, Barinas">Barinas, Barinas</option>
+                    <option value="custom">Otra ciudad / Importación...</option>
+                  </select>
+                </div>
+
+                {selectedCity === 'custom' && (
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">Escribe la ciudad / pueblo libre</label>
+                    <input
+                      type="text"
+                      value={customCity}
+                      onChange={(e) => setCustomCity(e.target.value)}
+                      placeholder="Ej. El Tigre / Cabimas / Miami, FL"
+                      className="w-full bg-neutral-950 border border-emerald-500/40 text-white rounded-lg p-2 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Opción Activo Importado */}
+              <div className="pt-2 border-t border-white/10 space-y-2">
+                <label className="block text-[11px] font-semibold text-neutral-300">¿Es un activo Importado?</label>
+                <select
+                  value={isImported}
+                  onChange={(e) => setIsImported(e.target.value)}
+                  className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
+                >
+                  <option value="no">No, está listo e instalado en Venezuela</option>
+                  <option value="venezuela_import">Está en Venezuela (En proceso de nacionalización / aduana)</option>
+                  <option value="usa_import">Está en USA (En tránsito marítimo hacia Venezuela)</option>
+                </select>
+
+                {isImported === 'usa_import' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/30">
+                    <div>
+                      <label className="block text-[10px] text-emerald-300 mb-0.5 font-semibold">Puerto de Origen (USA)</label>
+                      <input
+                        type="text"
+                        value={originPort}
+                        onChange={(e) => setOriginPort(e.target.value)}
+                        placeholder="Miami, FL"
+                        className="w-full bg-neutral-950 border border-white/10 text-white rounded p-1.5 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-emerald-300 mb-0.5 font-semibold">Puerto Llegada (VE)</label>
+                      <input
+                        type="text"
+                        value={arrivalPort}
+                        onChange={(e) => setArrivalPort(e.target.value)}
+                        placeholder="Puerto Cabello"
+                        className="w-full bg-neutral-950 border border-white/10 text-white rounded p-1.5 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-emerald-300 mb-0.5 font-semibold">Días Estimados Llegada</label>
+                      <input
+                        type="number"
+                        value={arrivalDays}
+                        onChange={(e) => setArrivalDays(e.target.value)}
+                        placeholder="25"
+                        className="w-full bg-neutral-950 border border-white/10 text-white rounded p-1.5 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Estimación de Alquiler & Retorno por Reventa */}
+            <div className="bg-neutral-900/90 border border-cyan-500/30 p-3.5 rounded-2xl space-y-2">
+              <div className="flex items-center gap-1.5 text-cyan-400 text-xs font-bold uppercase tracking-wider">
+                💰 Estimación de Alquiler & Tiempo de Reventa (ROI)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] text-neutral-300 mb-1">Precio Alquiler Aproximado (USDT)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={estimatedRentalPrice}
+                    onChange={(e) => setEstimatedRentalPrice(e.target.value)}
+                    placeholder="Ej. 1200"
+                    className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-neutral-300 mb-1">Periodo Alquiler</label>
+                  <select
+                    value={estimatedRentalPeriod}
+                    onChange={(e) => setEstimatedRentalPeriod(e.target.value)}
+                    className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs"
+                  >
+                    <option value="mensual">Mensual (USD/mes)</option>
+                    <option value="diario">Diario (USD/día)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-neutral-300 mb-1">Tiempo Reventa Estimado (Meses)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={estimatedResaleRoiMonths}
+                    onChange={(e) => setEstimatedResaleRoiMonths(e.target.value)}
+                    placeholder="Ej. 12 meses"
+                    className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs font-mono"
+                  />
+                </div>
+              </div>
+              {parsedNumHolders > 0 && Number(estimatedRentalPrice) > 0 && (
+                <p className="text-[10px] text-cyan-300 font-semibold bg-cyan-500/10 p-2 rounded-xl border border-cyan-500/30">
+                  🔥 Alquiler estimado por Holder ({parsedNumHolders} acciones): <strong className="text-white font-mono">+${Math.floor(Number(estimatedRentalPrice) / parsedNumHolders).toLocaleString()} USDT / holder</strong> ({estimatedRentalPeriod})
+                </p>
+              )}
+            </div>
+
             {/* Ficha Técnica Dinámica según Categoría */}
             <div className="bg-neutral-900/90 border border-white/10 p-3.5 rounded-2xl space-y-3">
               <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold uppercase tracking-wider">
@@ -397,15 +563,9 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               {/* ── BIENES RAÍCES ── */}
               {category === 'real_estate' && (
                 <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">📍 Ubicación / Ciudad</label>
-                      <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="Caracas, VE" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">📐 Área total (m²)</label>
-                      <input type="text" value={areaM2} onChange={e => setAreaM2(e.target.value)} placeholder="180" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
-                    </div>
+                  <div>
+                    <label className="block text-[11px] text-neutral-300 mb-1">📐 Área total (m²)</label>
+                    <input type="text" value={areaM2} onChange={e => setAreaM2(e.target.value)} placeholder="180 m²" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                   </div>
                   <div>
                     <label className="block text-[11px] text-neutral-300 mb-1">🏢 Tipo de Propiedad</label>
@@ -437,6 +597,20 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                 <>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">📄 Título del Vehículo</label>
+                      <input type="text" value={vehicleTitle} onChange={e => setVehicleTitle(e.target.value)} placeholder="Título 1-1" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs font-mono font-bold" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-neutral-300 mb-1">⚙️ Transmisión</label>
+                      <select value={transmission} onChange={e => setTransmission(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
+                        <option>Automática</option>
+                        <option>Manual</option>
+                        <option>CVT</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
                       <label className="block text-[11px] text-neutral-300 mb-1">🔩 Marca</label>
                       <input type="text" value={brand} onChange={e => setBrand(e.target.value)} placeholder="RAM / Ford" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs" />
                     </div>
@@ -458,35 +632,6 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                   <div>
                     <label className="block text-[11px] text-neutral-300 mb-1">🔖 Serial / VIN</label>
                     <input type="text" value={vin} onChange={e => setVin(e.target.value)} placeholder="1HGBH41JXMN109186" className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs font-mono" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">⚙️ Transmisión</label>
-                      <select value={transmission} onChange={e => setTransmission(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
-                        <option>Automática</option>
-                        <option>Manual</option>
-                        <option>CVT</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-neutral-300 mb-1">🛞 Estado Cauchos</label>
-                      <select value={tireCondition} onChange={e => setTireCondition(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
-                        <option value="">Seleccionar...</option>
-                        <option>Nuevos</option>
-                        <option>Bueno</option>
-                        <option>Regular</option>
-                        <option>Necesita Cambio</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-neutral-300 mb-1">🎨 Estado de Pintura</label>
-                    <select value={paintCondition} onChange={e => setPaintCondition(e.target.value)} className="w-full bg-neutral-950 border border-white/10 text-white rounded-lg p-2 text-xs">
-                      <option>Excelente</option>
-                      <option>Bueno</option>
-                      <option>Regular (Rayones menores)</option>
-                      <option>Necesita Retoque</option>
-                    </select>
                   </div>
                 </>
               )}

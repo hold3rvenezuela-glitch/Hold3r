@@ -40,6 +40,16 @@ export default function App() {
       const loadedAssets = await fetchAssets();
       if (loadedAssets && loadedAssets.length > 0) {
         setAssets(loadedAssets);
+
+        // Verificar si la URL trae un activo específico (ej. ?asset=UUID o /asset/UUID)
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlAssetId = searchParams.get('asset') || window.location.pathname.split('/asset/')[1];
+        if (urlAssetId) {
+          const matched = loadedAssets.find(a => a.id === urlAssetId);
+          if (matched) {
+            setSelectedInvestAsset(matched);
+          }
+        }
       }
 
       // 2. Verificar sesión activa en Supabase Auth

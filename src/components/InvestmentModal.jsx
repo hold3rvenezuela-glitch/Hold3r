@@ -352,15 +352,38 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
         {/* ── Ficha Técnica Detallada ── */}
         {asset.metadata && Object.keys(asset.metadata).length > 0 && (
           <div className="bg-neutral-900/90 border border-white/10 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-400">
-              <Sparkles className="w-3.5 h-3.5" />
-              Ficha Técnica del Activo
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-cyan-400">
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5" />
+                Ficha Técnica del Activo
+              </span>
+              {asset.metadata.is_imported && asset.metadata.is_imported !== 'no' && (
+                <span className="bg-emerald-500/20 text-emerald-300 text-[10px] px-2 py-0.5 rounded border border-emerald-500/40">
+                  {asset.metadata.is_imported === 'usa_import' ? '🚢 Importado desde USA' : '🛃 En Aduana Venezuela'}
+                </span>
+              )}
             </div>
+
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {/* Ubicación & Origen */}
+              {asset.metadata.location && <SpecRow icon="📍" label="Ubicación" value={asset.metadata.location} />}
+              {asset.metadata.estimated_rental_price && (
+                <SpecRow 
+                  icon="💵" 
+                  label="Alquiler Estimado" 
+                  value={`$${Number(asset.metadata.estimated_rental_price).toLocaleString()} USDT / ${asset.metadata.estimated_rental_period || 'mes'}`} 
+                />
+              )}
+              {asset.metadata.estimated_resale_roi_months && (
+                <SpecRow icon="⏳" label="Tiempo Reventa (ROI)" value={`${asset.metadata.estimated_resale_roi_months} meses`} />
+              )}
+              {asset.metadata.is_imported === 'usa_import' && asset.metadata.arrival_days && (
+                <SpecRow icon="🚢" label="Tránsito Marítimo" value={`${asset.metadata.origin_port || 'USA'} ➔ ${asset.metadata.arrival_port || 'Venezuela'} (${asset.metadata.arrival_days} días)`} fullWidth />
+              )}
+
               {/* Bienes Raíces */}
               {asset.category === 'real_estate' && (
                 <>
-                  {asset.metadata.location && <SpecRow icon="📍" label="Ubicación" value={asset.metadata.location} />}
                   {asset.metadata.area_m2 && <SpecRow icon="📐" label="Área" value={`${asset.metadata.area_m2} m²`} />}
                   {asset.metadata.property_type && <SpecRow icon="🏢" label="Tipo" value={asset.metadata.property_type} />}
                   {asset.metadata.bedrooms && <SpecRow icon="🛏" label="Habitaciones" value={asset.metadata.bedrooms} />}
@@ -372,14 +395,13 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
               {/* Vehículos */}
               {asset.category === 'fleet' && (
                 <>
+                  {asset.metadata.vehicle_title && <SpecRow icon="📄" label="Título Vehículo" value={asset.metadata.vehicle_title} mono />}
                   {asset.metadata.brand && <SpecRow icon="🔩" label="Marca" value={asset.metadata.brand} />}
                   {asset.metadata.model && <SpecRow icon="🚚" label="Modelo" value={asset.metadata.model} />}
                   {asset.metadata.year && <SpecRow icon="📅" label="Año" value={asset.metadata.year} />}
                   {asset.metadata.mileage && <SpecRow icon="📏" label="Kilometraje" value={asset.metadata.mileage} />}
-                  {asset.metadata.vin && <SpecRow icon="🔖" label="Serial / VIN" value={asset.metadata.vin} mono fullWidth />}
                   {asset.metadata.transmission && <SpecRow icon="⚙️" label="Transmisión" value={asset.metadata.transmission} />}
-                  {asset.metadata.tire_condition && <SpecRow icon="🛞" label="Cauchos" value={asset.metadata.tire_condition} />}
-                  {asset.metadata.paint_condition && <SpecRow icon="🎨" label="Pintura" value={asset.metadata.paint_condition} />}
+                  {asset.metadata.vin && <SpecRow icon="🔖" label="Serial / VIN" value={asset.metadata.vin} mono fullWidth />}
                 </>
               )}
               {/* Maquinaria Pesada */}

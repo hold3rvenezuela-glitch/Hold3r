@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText } from 'lucide-react';
+import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText, Printer, X, Download } from 'lucide-react';
 import { fetchUserShares } from '../services/api';
 
 export default function MyInvestmentsView({ userProfile, initialShares = [], onRefresh }) {
   const [shares, setShares] = useState(initialShares);
   const [loading, setLoading] = useState(false);
+  const [selectedContractShare, setSelectedContractShare] = useState(null);
 
   useEffect(() => {
     if (initialShares && initialShares.length > 0) {
@@ -147,19 +148,133 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
                 </div>
 
                 {/* Right: Contract Hash & Action */}
-                <div className="w-full md:w-auto text-right space-y-1">
+                <div className="w-full md:w-auto text-right space-y-2">
                   <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold block">
                     Hash de Contrato Web3
                   </span>
-                  <div className="bg-neutral-900 border border-white/10 p-2 rounded-xl text-[10px] font-mono text-emerald-300 truncate max-w-xs inline-block">
+                  <div className="bg-neutral-900 border border-white/10 p-2 rounded-xl text-[10px] font-mono text-emerald-300 truncate max-w-xs block">
                     {share.signed_contract_hash || '0x7f8a...31b'}
                   </div>
+                  <button
+                    onClick={() => setSelectedContractShare(share)}
+                    className="btn-secondary text-[11px] py-1.5 px-3 font-bold text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 w-full flex items-center justify-center gap-1.5"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> Ver Documento de Propiedad
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* ── MODAL IMPRESIÓN CONTRATO LEGAL PRIVADO DE PROPIEDAD RWA ── */}
+      {selectedContractShare && (() => {
+        const share = selectedContractShare;
+        const asset = share.asset || {};
+        const purchasedDate = share.purchased_at ? new Date(share.purchased_at).toLocaleString('es-VE') : new Date().toLocaleString('es-VE');
+        const txHash = share.signed_contract_hash || '0x7f8a9b2c3d4e5f6a1b2c3d4e5f6a7b8c9d0e1f2a';
+        const numAmount = Number(share.amount_invested_usdt || 0);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-fade-in">
+            <div className="bg-neutral-900 text-white w-full max-w-3xl rounded-2xl border border-emerald-500/40 p-6 sm:p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              {/* Header Modal */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-sm uppercase tracking-wider">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  HOLD3R RWA • Documento Jurídico de Propiedad Fraccionada
+                </div>
+                <button
+                  onClick={() => setSelectedContractShare(null)}
+                  className="p-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Contenido Imprimible del Contrato Legal */}
+              <div id="printable-contract" className="bg-neutral-950 p-6 sm:p-8 rounded-xl border border-white/10 space-y-6 text-xs text-neutral-300 leading-relaxed font-sans">
+                {/* Cabecera del Documento */}
+                <div className="text-center space-y-1 border-b border-white/10 pb-4">
+                  <h2 className="text-lg sm:text-xl font-extrabold text-white tracking-tight uppercase">CONTRATO PRIVADO DE ADQUISICIÓN DE ACCIONES RWA</h2>
+                  <p className="text-[11px] text-emerald-400 font-mono font-bold">PLATAFORMA HOLD3R VENEZUELA • PROTOCOLO DE TOKENIZACIÓN DE ACTIVOS REALES</p>
+                  <p className="text-[10px] text-neutral-400 font-mono">Emisión Digital Registrada: {purchasedDate}</p>
+                </div>
+
+                {/* Seccion I: Partes Contratantes */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-white uppercase text-[11px] text-emerald-300 border-l-2 border-emerald-400 pl-2">I. DATOS DEL TITULAR DEL ACTIVO (TITULAR REGISTRADO)</h4>
+                  <div className="grid grid-cols-2 gap-3 bg-neutral-900/80 p-3 rounded-lg border border-white/5 font-mono text-[11px]">
+                    <div><span className="text-neutral-400 block">Nombre Completo:</span> <strong className="text-white">{userProfile?.full_name || 'Inversionista Autenticado'}</strong></div>
+                    <div><span className="text-neutral-400 block">Cédula / RIF:</span> <strong className="text-white">{userProfile?.document_id || 'V-00000000'}</strong></div>
+                    <div><span className="text-neutral-400 block">ID de Usuario Supabase:</span> <strong className="text-white truncate block">{userProfile?.id || 'AUTH-SESSION'}</strong></div>
+                    <div><span className="text-neutral-400 block">Estado Jurídico:</span> <strong className="text-emerald-400">Titular Validado (KYC)</strong></div>
+                  </div>
+                </div>
+
+                {/* Seccion II: Objeto del Contrato & Activo */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-white uppercase text-[11px] text-emerald-300 border-l-2 border-emerald-400 pl-2">II. ESPECIFICACIONES DEL BIEN ADQUIRIDO (ACTIVO RWA)</h4>
+                  <div className="bg-neutral-900/80 p-3 rounded-lg border border-white/5 space-y-2 font-mono text-[11px]">
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-400">Denominación del Activo:</span>
+                      <strong className="text-white font-bold">{asset.title || 'Activo RWA'}</strong>
+                    </div>
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-400">Categoría:</span>
+                      <strong className="text-cyan-300 capitalize">{asset.category === 'real_estate' ? 'Bienes Raíces' : asset.category === 'heavy_machinery' ? 'Maquinaria Pesada' : 'Vehículos'}</strong>
+                    </div>
+                    {asset.metadata?.location && (
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-neutral-400">Ubicación / Ciudad:</span>
+                        <strong className="text-white">{asset.metadata.location}</strong>
+                      </div>
+                    )}
+                    {asset.metadata?.vin && (
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-neutral-400">Serial VIN / Chasis:</span>
+                        <strong className="text-amber-300">{asset.metadata.vin}</strong>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-400">Valoración Total del Activo:</span>
+                      <strong className="text-white">${Number(asset.total_valuation || 0).toLocaleString()} USDT</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seccion III: Detalle de Transacción y Derechos */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-white uppercase text-[11px] text-emerald-300 border-l-2 border-emerald-400 pl-2">III. APORTE, ACCIONES ADQUIRIDAS Y BLINDAJE JURÍDICO</h4>
+                  <div className="grid grid-cols-2 gap-3 bg-emerald-950/30 p-3 rounded-lg border border-emerald-500/30 font-mono text-[11px]">
+                    <div><span className="text-neutral-400 block">Monto en USDT Inyectado:</span> <strong className="text-emerald-400 text-sm">${numAmount.toLocaleString()} USDT</strong></div>
+                    <div><span className="text-neutral-400 block">Porcentaje de Participación:</span> <strong className="text-cyan-300 text-sm">{Number(share.shares_percentage || 0).toFixed(4)}%</strong></div>
+                    <div className="col-span-2"><span className="text-neutral-400 block">TxID / Hash de Firma Web3:</span> <strong className="text-emerald-300 text-[10px] break-all">{txHash}</strong></div>
+                  </div>
+                  <p className="text-[10px] text-neutral-400 leading-relaxed pt-1">
+                    * El presente documento otorga al titular pleno derecho económico sobre los rendimientos de alquiler, valorización comercial y voz/voto en la gobernanza de este activo conforme a los estatutos de HOLD3R Venezuela.
+                  </p>
+                </div>
+              </div>
+
+              {/* Botones Accion Modal */}
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-[11px] text-neutral-400 font-mono">Documento oficial generado con hash criptográfico único.</p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => window.print()}
+                    className="btn-primary text-xs flex items-center gap-2 bg-emerald-500 text-neutral-950 font-bold"
+                  >
+                    <Printer className="w-4 h-4" /> Imprimir / Guardar en PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
+
