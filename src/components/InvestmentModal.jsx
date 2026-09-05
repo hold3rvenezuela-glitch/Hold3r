@@ -345,6 +345,41 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
           </div>
         )}
 
+        {/* ── Ratings del Activo ── */}
+        {asset.ratings && Object.keys(asset.ratings).length > 0 && (() => {
+          const ratingLabels = {
+            location: '📍 Ubicación', condition: '🏠 Estado', roi: '📈 ROI',
+            liquidity: '💧 Liquidez', mechanical: '🔧 Mecánico', paint: '🎨 Visual',
+            market_demand: '📊 Demanda', hours: '⏱️ Horas', maintenance: '🔬 Mantenimiento',
+            resale: '💰 Reventa'
+          };
+          const ratingEntries = Object.entries(asset.ratings).filter(([, v]) => v !== null && v !== undefined);
+          return (
+            <div className="bg-neutral-900/90 border border-amber-500/25 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400">
+                ★ Calificación del Activo
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {ratingEntries.map(([key, val]) => {
+                  const numVal = Number(val);
+                  const color = numVal >= 8 ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
+                    : numVal >= 5 ? 'text-amber-400 bg-amber-500/15 border-amber-500/30'
+                    : 'text-rose-400 bg-rose-500/15 border-rose-500/30';
+                  const emoji = numVal >= 8 ? '🟢' : numVal >= 5 ? '🟡' : '🔴';
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-neutral-400 truncate">{ratingLabels[key] || key}</span>
+                      <span className={`text-xs font-extrabold font-mono border rounded-lg px-2 py-0.5 shrink-0 ${color}`}>
+                        {emoji} {numVal}/10
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── HOLD3RS Occupancy Indicator ── */}
         {isFixedQuota && totalShares > 0 && (
           <div className="bg-neutral-900/90 border border-cyan-500/30 rounded-2xl p-4 space-y-2">

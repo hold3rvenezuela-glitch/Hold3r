@@ -26,6 +26,23 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const [minInvestment, setMinInvestment] = useState('10');
   const [maxInvestment, setMaxInvestment] = useState('');
 
+  // ── Cantidad de Holders (auto-calculador de cuota fija) ──────
+  const [numHolders, setNumHolders] = useState('');
+
+  // ── Ratings 0-10 por categoría ────────────────────────────────
+  const [ratings, setRatings] = useState({
+    location_rating: 5, condition_rating: 5, roi_rating: 5, liquidity_rating: 5,
+    mechanical_rating: 5, paint_rating: 5, market_demand_rating: 5,
+    hours_rating: 5, maintenance_rating: 5, resale_rating: 5,
+  });
+
+  const updateRating = (key, delta) => {
+    setRatings(prev => ({
+      ...prev,
+      [key]: Math.min(10, Math.max(0, (prev[key] ?? 5) + delta))
+    }));
+  };
+
   // ── Bienes Raíces (real_estate) ──────────────────────────────
   const [location, setLocation] = useState('Caracas, Venezuela');
   const [areaM2, setAreaM2] = useState('');
@@ -54,8 +71,17 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const parsedValuation = Number(totalValuation) || 0;
   const parsedMin = Number(minInvestment) || 0;
   const parsedMax = Number(maxInvestment) || 0;
-  const isFixedQuota = parsedMin > 0 && parsedMax > 0 && parsedMin === parsedMax;
-  const totalHold3rs = isFixedQuota && parsedMin > 0 ? Math.floor(parsedValuation / parsedMin) : 0;
+  const parsedNumHolders = Number(numHolders) || 0;
+  // If numHolders is set, override min/max with the auto-calculated quota
+  const autoQuota = parsedNumHolders > 0 && parsedValuation > 0
+    ? Math.floor(parsedValuation / parsedNumHolders)
+    : 0;
+  const effectiveMin = autoQuota > 0 ? autoQuota : parsedMin;
+  const effectiveMax = autoQuota > 0 ? autoQuota : parsedMax;
+  const isFixedQuota = effectiveMin > 0 && effectiveMax > 0 && effectiveMin === effectiveMax;
+  const totalHold3rs = autoQuota > 0
+    ? parsedNumHolders
+    : (isFixedQuota && parsedMin > 0 ? Math.floor(parsedValuation / parsedMin) : 0);
 
   if (userProfile?.role !== 'admin') {
     return (
@@ -144,6 +170,38 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         };
       }
 
+      // Construir objeto ratings según categoría
+      let activeRatings = {};
+      if (category === 'real_estate') {
+        activeRatings = {
+          location: ratings.location_rating,
+          condition: ratings.condition_rating,
+          roi: ratings.roi_rating,
+          liquidity: ratings.liquidity_rating,
+        };
+      } else if (category === 'fleet') {
+        activeRatings = {
+          mechanical: ratings.mechanical_rating,
+          paint: ratings.paint_rating,
+          market_demand: ratings.market_demand_rating,
+          roi: ratings.roi_rating,
+        };
+      } else if (category === 'heavy_machinery') {
+        activeRatings = {
+          hours: ratings.hours_rating,
+          maintenance: ratings.maintenance_rating,
+          resale: ratings.resale_rating,
+          roi: ratings.roi_rating,
+        };
+      }
+
+      // Calcular cuota final considerando numHolders
+      const autoQuotaFinal = parsedNumHolders > 0 && parsedValuation > 0
+        ? Math.floor(parsedValuation / parsedNumHolders)
+        : null;
+      const finalMin = autoQuotaFinal || (minInvestment ? Number(minInvestment) : 10);
+      const finalMax = autoQuotaFinal || (maxInvestment ? Number(maxInvestment) : null);
+
       const defaultFallbackImg = category === 'real_estate' 
         ? 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=1200&q=80'
         : category === 'heavy_machinery'
@@ -162,8 +220,10 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         images: finalImages,
         description,
         metadata,
-        min_investment: minInvestment ? Number(minInvestment) : 10,
-        max_investment: maxInvestment ? Number(maxInvestment) : null
+        ratings: activeRatings,
+        num_holders: parsedNumHolders > 0 ? parsedNumHolders : null,
+        min_investment: finalMin,
+        max_investment: finalMax
       });
 
       setLastCreatedAsset(newAsset);
@@ -177,7 +237,13 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
       setManualUrl('');
       setMinInvestment('10');
       setMaxInvestment('');
+      setNumHolders('');
       setDescription('');
+      setRatings({
+        location_rating: 5, condition_rating: 5, roi_rating: 5, liquidity_rating: 5,
+        mechanical_rating: 5, paint_rating: 5, market_demand_rating: 5,
+        hours_rating: 5, maintenance_rating: 5, resale_rating: 5,
+      });
       // Reset metadata fields
       setLocation('Caracas, Venezuela'); setAreaM2(''); setPropertyType('Residencial');
       setBedrooms(''); setBathrooms(''); setFlooring(''); setAmenities('');
@@ -490,6 +556,42 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               * Monto inicial inyectado al activo previo a la ronda pública. Déjalo en 0 si inicia desde cero.
             </p>
 
+            {/* Cantidad de Holders (Calculador Automático de Cuota Fija) */}
+            <div className="bg-neutral-900/90 border border-purple-500/30 p-3.5 rounded-2xl space-y-2">
+              <div className="flex items-center gap-1.5 text-purple-400 text-xs font-bold uppercase tracking-wider">
+                <Users className="w-3.5 h-3.5" />
+                Calculador por Núm. de Holders
+              </div>
+              <div>
+                <label className="block text-[11px] text-neutral-300 mb-1">
+                  Cantidad de Holders (Socios)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={numHolders}
+                  onChange={(e) => setNumHolders(e.target.value)}
+                  placeholder="Ej. 10"
+                  className="w-full bg-neutral-950 border border-purple-500/30 text-white font-mono rounded-lg p-2 text-xs outline-none focus:border-purple-400"
+                />
+              </div>
+              {parsedNumHolders > 0 && parsedValuation > 0 && (
+                <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">Cuota Automática Calculada</p>
+                    <p className="text-[11px] text-neutral-300">${parsedValuation.toLocaleString()} ÷ {parsedNumHolders} holders</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xl font-extrabold text-white font-mono">${autoQuota.toLocaleString()}</span>
+                    <p className="text-[10px] text-purple-400 font-bold">USDT / holder</p>
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-neutral-400 leading-relaxed">
+                💡 Al ingresar la cantidad de holders, el sistema calculará automáticamente la cuota fija (Mín = Máx). Los campos manuales de Inversión Mín / Máx quedan como respaldo si dejas este campo vacío.
+              </p>
+            </div>
+
             {/* Límites de Inversión por Inversionista */}
             <div className="bg-neutral-900/90 border border-white/10 p-3.5 rounded-2xl space-y-2">
               <div className="flex items-center gap-1.5 text-cyan-400 text-xs font-bold uppercase tracking-wider">
@@ -531,7 +633,9 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                     <Users className="w-4 h-4 text-emerald-400 shrink-0" />
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400">HOLD3RS Totales</p>
-                      <p className="text-[11px] text-neutral-300">${parsedValuation.toLocaleString()} ÷ ${parsedMin.toLocaleString()} USDT/cuota</p>
+                      <p className="text-[11px] text-neutral-300">
+                        ${parsedValuation.toLocaleString()} ÷ ${(autoQuota > 0 ? autoQuota : effectiveMin).toLocaleString()} USDT/cuota
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -545,6 +649,60 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                   ⚠️ Mínimo ≠ Máximo: modo de inversión libre (rango ${parsedMin.toLocaleString()} – ${parsedMax.toLocaleString()} USDT).
                 </p>
               )}
+            </div>
+
+            {/* Ratings 0-10 por Categoría */}
+            <div className="bg-neutral-900/90 border border-amber-500/30 p-3.5 rounded-2xl space-y-3">
+              <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold uppercase tracking-wider">
+                ★ Calificación del Activo (0–10)
+              </div>
+              {(() => {
+                const ratingItems = category === 'real_estate' ? [
+                  { key: 'location_rating', label: '📍 Ubicación' },
+                  { key: 'condition_rating', label: '🏠 Estado del Inmueble' },
+                  { key: 'roi_rating', label: '📈 Rentabilidad (ROI)' },
+                  { key: 'liquidity_rating', label: '💧 Liquidez / Salida' },
+                ] : category === 'fleet' ? [
+                  { key: 'mechanical_rating', label: '🔧 Estado Mecánico' },
+                  { key: 'paint_rating', label: '🎨 Estado Visual / Pintura' },
+                  { key: 'market_demand_rating', label: '📊 Demanda de Mercado' },
+                  { key: 'roi_rating', label: '📈 Rentabilidad (ROI)' },
+                ] : [
+                  { key: 'hours_rating', label: '⏱️ Estado por Horas' },
+                  { key: 'maintenance_rating', label: '🔬 Mantenimiento' },
+                  { key: 'resale_rating', label: '💰 Valor de Reventa' },
+                  { key: 'roi_rating', label: '📈 Rentabilidad (ROI)' },
+                ];
+                return (
+                  <div className="grid grid-cols-1 gap-2">
+                    {ratingItems.map(({ key, label }) => {
+                      const val = ratings[key] ?? 5;
+                      const color = val >= 8 ? 'text-emerald-400' : val >= 5 ? 'text-amber-400' : 'text-rose-400';
+                      const badge = val >= 8 ? 'bg-emerald-500/15 border-emerald-500/30' : val >= 5 ? 'bg-amber-500/15 border-amber-500/30' : 'bg-rose-500/15 border-rose-500/30';
+                      return (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-[11px] text-neutral-300 flex-1">{label}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateRating(key, -1)}
+                              className="w-6 h-6 rounded-lg bg-neutral-800 hover:bg-rose-500/20 text-neutral-300 text-xs font-bold flex items-center justify-center transition-colors"
+                            >−</button>
+                            <span className={`w-10 text-center font-extrabold text-sm font-mono border rounded-lg px-1.5 py-0.5 ${color} ${badge}`}>
+                              {val}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateRating(key, +1)}
+                              className="w-6 h-6 rounded-lg bg-neutral-800 hover:bg-emerald-500/20 text-neutral-300 text-xs font-bold flex items-center justify-center transition-colors"
+                            >+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             <div>

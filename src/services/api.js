@@ -293,6 +293,8 @@ export async function createAsset(assetData) {
   if (assetData.min_investment) dbPayload.min_investment = Number(assetData.min_investment);
   if (assetData.max_investment) dbPayload.max_investment = Number(assetData.max_investment);
   if (assetData.metadata && Object.keys(assetData.metadata).length > 0) dbPayload.metadata = assetData.metadata;
+  if (assetData.num_holders) dbPayload.num_holders = Number(assetData.num_holders);
+  if (assetData.ratings && Object.keys(assetData.ratings).length > 0) dbPayload.ratings = assetData.ratings;
 
   let { data, error } = await supabase
     .from(TABLES.ASSETS)
@@ -328,6 +330,27 @@ export async function createAsset(assetData) {
 export async function deleteAsset(assetId) {
   if (!assetId) throw new Error('ID de activo no válido.');
 
+  // Verificar sesión activa antes de intentar DELETE (evita silenciar error RLS)
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) {
+    throw new Error('No estás autenticado. Inicia sesión como administrador para eliminar activos.');
+  }
+
+  // Verificar rol admin en profiles
+  const { data: profile, error: profileError } = await supabase
+    .from(TABLES.PROFILES)
+    .select('role')
+    .eq('id', session.user.id)
+    .single();
+
+  if (profileError || !profile) {
+    throw new Error('No se pudo verificar tu perfil de administrador.');
+  }
+
+  if (profile.role !== 'admin') {
+    throw new Error(`Acceso denegado: tu rol es "${profile.role}". Solo los administradores pueden eliminar activos.`);
+  }
+
   const { data, error } = await supabase
     .from(TABLES.ASSETS)
     .delete()
@@ -337,6 +360,11 @@ export async function deleteAsset(assetId) {
   if (error) {
     console.error('Error al eliminar activo en Supabase:', error);
     throw new Error(`Error de Supabase al eliminar (${error.code || 'RLS'}): ${error.message}`);
+  }
+
+  // Si data es vacío, el activo no existía o la política RLS rechazó silenciosamente
+  if (!data || data.length === 0) {
+    throw new Error('El activo no pudo ser eliminado. Verifica que exista y que las políticas RLS estén configuradas correctamente en Supabase.');
   }
 
   return data;

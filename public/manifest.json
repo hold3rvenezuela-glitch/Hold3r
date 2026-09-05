@@ -1,0 +1,17 @@
+{
+  "short_name": "HOLD3R",
+  "name": "HOLD3R - Inversión Fraccionada RWA",
+  "icons": [
+    {
+      "src": "/pwa-icon.jpg",
+      "type": "image/jpeg",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0a0a",
+  "theme_color": "#06b6d4",
+  "display": "standalone",
+  "orientation": "portrait"
+}
