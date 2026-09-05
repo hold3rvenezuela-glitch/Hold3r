@@ -199,6 +199,56 @@ export async function depositFunds(walletId, currentBalance, amountUsdt) {
   return data;
 }
 
+/**
+ * Invoca el backend / Edge Function de Supabase para verificar el TxID en la Blockchain
+ * y acreditar atómicamente el saldo en public.wallets y public.deposits.
+ */
+export async function verifyAndCreditDeposit({ userId, txHash, network, amountUsdt }) {
+  if (!userId || !txHash || !amountUsdt) {
+    throw new Error('Faltan parámetros requeridos para procesar la acreditación.');
+  }
+
+  // 1. Intentar llamar a la Edge Function 'verify-usdt-deposit' de Supabase
+  try {
+    const { data: edgeData, error: edgeError } = await supabase.functions.invoke('verify-usdt-deposit', {
+      body: { userId, txHash, network, amountUsdt }
+    });
+
+    if (!edgeError && edgeData && edgeData.success) {
+      return edgeData;
+    }
+
+    if (edgeError || (edgeData && !edgeData.success)) {
+      console.warn('Aviso de Edge Function (fallback a RPC directo):', edgeError?.message || edgeData?.error);
+    }
+  } catch (eErr) {
+    console.warn('Edge Function no disponible (usando fallback RPC de Base de Datos):', eErr);
+  }
+
+  // 2. Fallback a Stored Procedure RPC directo de base de datos 'verify_and_credit_deposit'
+  const targetTreasury = network === 'ERC20' 
+    ? '0x72D45C3d8147D3225C841C1f92D73D3F9A6A85a7' 
+    : '0x72D45C3d8147D3225C841C1f92D73D3F9A6A85a7';
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('verify_and_credit_deposit', {
+    p_user_id: userId,
+    p_tx_hash: txHash,
+    p_network: network,
+    p_amount_usdt: Number(amountUsdt),
+    p_treasury_address: targetTreasury
+  });
+
+  if (rpcError) {
+    throw new Error(rpcError.message || 'Error al acreditar depósito en la base de datos.');
+  }
+
+  if (rpcData && !rpcData.success) {
+    throw new Error(rpcData.message || 'El depósito no pudo ser acreditado.');
+  }
+
+  return rpcData;
+}
+
 // ----------------------------------------------------
 // ASSETS
 // ----------------------------------------------------

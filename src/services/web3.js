@@ -200,6 +200,26 @@ export async function connectWeb3Wallet() {
 }
 
 /**
+ * Convierte montos numéricos a BigInt con precisión exacta sin pérdida flotante
+ */
+export function parseUsdtUnits(amountStr, decimals = 18) {
+  const str = String(amountStr).trim();
+  const parts = str.split('.');
+  let whole = parts[0] || '0';
+  let fraction = parts[1] || '';
+
+  if (fraction.length > decimals) {
+    fraction = fraction.substring(0, decimals);
+  } else {
+    fraction = fraction.padEnd(decimals, '0');
+  }
+
+  const combined = whole + fraction;
+  const cleanHex = combined.replace(/^0+/, '');
+  return BigInt(cleanHex || '0');
+}
+
+/**
  * Ejecuta y firma la llamada al contrato USDT según la arquitectura elegida.
  * Compatible con WalletConnect provider, window.ethereum y window.trustwallet.
  * Incluye verificación previa de gas nativo (BNB/ETH) y codificación exacta EIP-1193.
@@ -264,29 +284,32 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     console.warn('No se pudo verificar el saldo de gas previo:', gasErr);
   }
 
-  // 2. Contrato Inteligente USDT para EVM
+  // 2. Dirección OFICIAL del Contrato Inteligente USDT para la red EVM
   const rawContractAddress = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
   const contractAddress = rawContractAddress.trim();
 
   // 3. Decimales por Estándar Oficial de Red:
-  // - BEP20 (BSC Mainnet USDT): 18 decimales
-  // - ERC20 (Ethereum Mainnet USDT): 6 decimales
+  // - BEP20 (BSC Mainnet USDT 0x55d398326f99059fF775485246999027B3197955): 18 decimales
+  // - ERC20 (Ethereum Mainnet USDT 0xdAC17F958D2ee523a2206206994597C13D831ec7): 6 decimales
   const decimals = network === 'BEP20' ? 18 : 6;
-  const rawAmountBigInt = BigInt(Math.floor(amountNumber * Math.pow(10, decimals)));
+  const rawAmountBigInt = parseUsdtUnits(amountUsdt, decimals);
   const hexAmount = rawAmountBigInt.toString(16).padStart(64, '0');
 
   // Selector del método ERC20/BEP20: transfer(address,uint256) -> 0xa9059cbb
+  // Parámetro 1: Dirección de la Tesorería Oficial HOLD3R (32 bytes)
   const cleanRecipient = targetTreasury.replace(/^0x/i, '').toLowerCase().padStart(64, '0');
+  // Parámetro 2: Monto en unidades mínimas (32 bytes)
   const dataPayload = `0xa9059cbb${cleanRecipient}${hexAmount}`;
 
   try {
-    // Solicitud de firma y transmisión a la blockchain vía EIP-1193 provider
+    // Solicitud EIP-1193 transmitida a MetaMask / Trust Wallet
     const txHash = await activeProvider.request({
       method: 'eth_sendTransaction',
       params: [{
         from: fromAddress,
-        to: contractAddress, // Dirección oficial del Contrato Inteligente USDT
-        data: dataPayload,   // Firma ERC20 transfer(tesorería, monto)
+        to: contractAddress,  // Contrato Oficial USDT (0x55d398326f99059fF775485246999027B3197955)
+        data: dataPayload,    // transfer(0x72D45C3d8147D3225C841C1f92D73D3F9A6A85a7, monto)
+        value: '0x0'          // Transacción del token ERC20/BEP20 sin transferencia de BNB/ETH nativo
       }]
     });
 

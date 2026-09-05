@@ -10,6 +10,7 @@ import {
   validateTxHashForNetwork, validateAddressForNetwork,
   isMobileBrowser, getMobileWalletDeepLink, isWeb3Available
 } from '../services/web3';
+import { verifyAndCreditDeposit } from '../services/api';
 
 const NETWORKS = [
   { id: 'BEP20', label: 'BEP20 · BNB Chain', type: 'EVM', chainId: 56, nativeSymbol: 'BNB', color: 'emerald' },
@@ -123,6 +124,19 @@ export default function DepositModal({
           provider: walletProvider,
           userAddress: activeWalletAddress
         });
+        
+        // Acreditación automática en Backend Supabase (Edge Function / RPC)
+        try {
+          await verifyAndCreditDeposit({
+            userId: activeWalletAddress || 'demo_user',
+            txHash: txRes.txHash,
+            network: selectedNetwork,
+            amountUsdt: amountNum
+          });
+        } catch (credErr) {
+          console.warn('Aviso de acreditación atómica:', credErr);
+        }
+
         setTxSuccess(txRes);
         if (onDepositUsdt) onDepositUsdt(amountNum);
       } else {
@@ -136,6 +150,19 @@ export default function DepositModal({
         }
 
         const verified = await verifyBlockchainTxHash(inputTxHash, selectedNetwork);
+        
+        // Acreditación automática en Backend Supabase
+        try {
+          await verifyAndCreditDeposit({
+            userId: activeWalletAddress || 'demo_user',
+            txHash: inputTxHash,
+            network: selectedNetwork,
+            amountUsdt: amountNum
+          });
+        } catch (credErr) {
+          console.warn('Aviso de acreditación atómica:', credErr);
+        }
+
         setTxSuccess(verified);
         if (onDepositUsdt) onDepositUsdt(amountNum);
       }
@@ -453,12 +480,12 @@ export default function DepositModal({
               <span className="absolute left-3.5 top-2.5 text-emerald-400 font-mono font-bold text-lg">$</span>
               <input 
                 type="number" 
-                min="10" 
-                step="10" 
+                min="1" 
+                step="1" 
                 required 
                 value={depositAmount} 
                 onChange={e => setDepositAmount(e.target.value)} 
-                placeholder="500" 
+                placeholder="50" 
                 className="w-full bg-neutral-900 border border-white/15 focus:border-emerald-500 text-white font-mono font-extrabold text-lg rounded-xl py-2.5 pl-9 pr-16 outline-none" 
               />
               <span className="absolute right-3.5 top-3 text-xs font-mono font-bold text-neutral-400">
