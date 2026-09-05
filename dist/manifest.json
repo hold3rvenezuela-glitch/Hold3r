@@ -6,12 +6,18 @@
       "src": "/pwa-icon.jpg",
       "type": "image/jpeg",
       "sizes": "512x512",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
     }
   ],
   "start_url": "/",
-  "background_color": "#0a0a0a",
-  "theme_color": "#06b6d4",
+  "background_color": "#0B0F0E",
+  "theme_color": "#00FF66",
   "display": "standalone",
   "orientation": "portrait"
 }

@@ -39,10 +39,10 @@ export default function Navbar({
             className="flex items-center gap-2.5 group shrink-0"
           >
             <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center"
-              style={{ background: 'rgba(0,255,136,0.12)', border: '1px solid rgba(0,255,136,0.30)' }}
+              className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-lg shadow-emerald-500/10"
+              style={{ background: '#0B0F0E', border: '1px solid rgba(0,255,102,0.35)' }}
             >
-              <Shield className="w-4.5 h-4.5" style={{ color: '#00FF88' }} />
+              <img src="/pwa-icon.jpg" alt="H" className="w-full h-full object-cover" />
             </div>
             <div className="text-left">
               <div className="flex items-center gap-1.5">

@@ -155,7 +155,7 @@ export default function App() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex flex-col font-sans" style={{ background: '#0B0F0E', color: '#fff' }}>
+    <div className="min-h-screen w-full flex flex-col font-sans overflow-x-hidden" style={{ background: '#0B0F0E', color: '#fff' }}>
 
       <Navbar
         currentTab={currentTab}
@@ -167,17 +167,22 @@ export default function App() {
         onDepositUsdt={handleDepositUsdt}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {loading ? (
           <div
-            className="p-16 text-center rounded-2xl"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}
+            className="my-auto p-8 sm:p-16 text-center rounded-2xl max-w-md mx-auto"
+            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
           >
-            <div
-              className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin mx-auto mb-3"
-              style={{ borderColor: '#00FF88', borderTopColor: 'transparent' }}
-            />
-            <p className="text-xs font-mono" style={{ color: '#6b7280' }}>
+            <div className="relative w-12 h-12 mx-auto mb-4">
+              <div
+                className="w-12 h-12 rounded-full border-2 animate-spin"
+                style={{ borderColor: '#00FF66', borderTopColor: 'transparent' }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-[10px] font-black text-emerald-400 font-mono">H</span>
+              </div>
+            </div>
+            <p className="text-xs font-mono text-neutral-400">
               Conectando con Supabase · Cargando catálogo RWA...
             </p>
           </div>
