@@ -263,7 +263,7 @@ export default function App() {
 
       {/* Footer */}
       <footer
-        className="border-t py-6 text-center text-xs"
+        className="border-t py-6 pb-20 md:pb-6 text-center text-xs"
         style={{ borderColor: 'rgba(255,255,255,0.07)', color: '#6b7280', background: 'rgba(0,0,0,0.2)' }}
       >
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
