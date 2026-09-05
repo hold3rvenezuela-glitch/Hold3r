@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles, Wallet, Globe, RefreshCw, Clock, Lock, Check, UserPlus } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { investInAsset, reserveAssetSlot, getActiveReservation, releaseAssetReservation, joinAssetWaitlist } from '../services/api';
+import { investInAsset, reserveAssetSlot, getActiveReservation, releaseAssetReservation, joinAssetWaitlist, fetchActiveReservationsSumForAsset } from '../services/api';
 import { sendUsdtWeb3Transfer, isWeb3Available } from '../services/web3';
 import { useWeb3ModalAccount } from '@web3modal/ethers/react';
 
@@ -11,9 +11,20 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
 
   if (!asset) return null;
 
+  const [totalReservedSum, setTotalReservedSum] = useState(0);
+
+  useEffect(() => {
+    if (asset?.id) {
+      fetchActiveReservationsSumForAsset(asset.id).then(sum => {
+        setTotalReservedSum(sum || 0);
+      });
+    }
+  }, [asset?.id]);
+
   const valuation = Number(asset.total_valuation);
   const funded = Number(asset.funded_amount);
-  const remainingUsdt = Math.max(0, valuation - funded);
+  const effectiveFunded = funded + totalReservedSum;
+  const remainingUsdt = Math.max(0, valuation - effectiveFunded);
   const userBalance = Number(wallet?.balance || 0);
 
   const minInvestment = Number(asset.min_investment || asset.minInvestment || 10);
@@ -26,7 +37,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
   const fixedQuotaAmount = isFixedQuota ? minInvestment : null;
 
   const totalShares = isFixedQuota ? Math.floor(valuation / fixedQuotaAmount) : 0;
-  const fundedShares = isFixedQuota ? Math.floor(funded / fixedQuotaAmount) : 0;
+  const fundedShares = isFixedQuota ? Math.floor(effectiveFunded / fixedQuotaAmount) : 0;
   const availableShares = isFixedQuota ? Math.max(0, totalShares - fundedShares) : 0;
 
   // Estado del activo (Agotado o Disponible)
@@ -427,7 +438,9 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
                   className="w-full py-3.5 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-400 text-neutral-950 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
                 >
                   <Clock className="w-4 h-4" />
-                  {isReserving ? 'Reservando Cupo en Supabase...' : `Reservar Cupo por 15 Minutos ($${numAmount.toLocaleString()} USDT)`}
+                  {isReserving ? 'Reservando Cupo en Supabase...' : isFixedQuota 
+                    ? `Reservar Cupo (1 de ${availableShares} disponibles por $${numAmount.toLocaleString()} USDT)`
+                    : `Reservar Cupo (1 cupo de $${numAmount.toLocaleString()} USDT disponible)`}
                 </button>
               </div>
             ) : (

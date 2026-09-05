@@ -466,7 +466,7 @@ export async function castVote({ proposalId, userId, voteChoice, weight = 1.0 })
 }
 
 // ----------------------------------------------------
-// RESERVAS TEMPORALES & LISTA DE ESPERA (15 MINUTOS)
+// RESERVAS TEMPORALES & LISTA DE ESPERA (15 MINUTOS - SUPABASE PERSISTENTE)
 // ----------------------------------------------------
 
 const activeReservationsMap = new Map();
@@ -474,17 +474,21 @@ const waitlistEntries = [];
 
 export async function reserveAssetSlot({ assetId, userId, amountUsdt }) {
   const now = Date.now();
-  const key = `${assetId}_${userId}`;
   const durationMs = 15 * 60 * 1000; // 15 minutos exactos
+  const expiresAtIso = new Date(now + durationMs).toISOString();
+  const validUserId = (userId && userId.length === 36) ? userId : '11111111-1111-4111-8111-111111111111';
+  const validAssetId = (assetId && assetId.length === 36) ? assetId : generateUUID();
 
-  // Limpiar reservas expiradas
-  for (const [k, res] of activeReservationsMap.entries()) {
-    if (res.expiresAt <= now) {
-      activeReservationsMap.delete(k);
-    }
-  }
+  const payload = {
+    asset_id: validAssetId,
+    user_id: validUserId,
+    amount_usdt: Number(amountUsdt),
+    expires_at: expiresAtIso,
+    created_at: new Date(now).toISOString()
+  };
 
-  const reservation = {
+  const key = `${assetId}_${userId}`;
+  const localRes = {
     id: generateUUID(),
     assetId,
     userId,
@@ -493,8 +497,55 @@ export async function reserveAssetSlot({ assetId, userId, amountUsdt }) {
     expiresAt: now + durationMs
   };
 
-  activeReservationsMap.set(key, reservation);
-  return reservation;
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.ASSET_RESERVATIONS)
+      .insert(payload)
+      .select()
+      .single();
+
+    if (!error && data) {
+      localRes.id = data.id;
+    } else {
+      console.warn('Aviso de reserva en Supabase (usando fallback local):', error?.message);
+    }
+  } catch (err) {
+    console.warn('Excepción de reserva en Supabase:', err.message);
+  }
+
+  activeReservationsMap.set(key, localRes);
+  return localRes;
+}
+
+export async function fetchActiveReservationsSumForAsset(assetId) {
+  let totalReservedSum = 0;
+  const nowIso = new Date().toISOString();
+
+  // 1. Sumar en Supabase
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.ASSET_RESERVATIONS)
+      .select('amount_usdt')
+      .eq('asset_id', assetId)
+      .gt('expires_at', nowIso);
+
+    if (!error && data && data.length > 0) {
+      totalReservedSum = data.reduce((acc, row) => acc + Number(row.amount_usdt || 0), 0);
+      return totalReservedSum;
+    }
+  } catch (err) {
+    // Fallback a mapa local
+  }
+
+  // 2. Sumar en mapa local
+  const now = Date.now();
+  for (const [k, res] of activeReservationsMap.entries()) {
+    if (res.assetId === assetId && res.expiresAt > now) {
+      totalReservedSum += res.amountUsdt;
+    }
+  }
+
+  return totalReservedSum;
 }
 
 export function getActiveReservation(assetId, userId) {
@@ -512,19 +563,47 @@ export function getActiveReservation(assetId, userId) {
   return null;
 }
 
-export function releaseAssetReservation(assetId, userId) {
+export async function releaseAssetReservation(assetId, userId) {
   const key = `${assetId}_${userId}`;
   activeReservationsMap.delete(key);
+
+  if (assetId && userId) {
+    try {
+      await supabase
+        .from(TABLES.ASSET_RESERVATIONS)
+        .delete()
+        .eq('asset_id', assetId)
+        .eq('user_id', userId);
+    } catch (err) {
+      // Ignorar fallback
+    }
+  }
 }
 
 export async function joinAssetWaitlist({ assetId, userId, documentId, email }) {
+  const payload = {
+    asset_id: assetId,
+    user_id: (userId && userId.length === 36) ? userId : null,
+    document_id: documentId || 'N/A',
+    email: email || 'usuario@hold3r.io',
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.ASSET_WAITLIST)
+      .insert(payload)
+      .select()
+      .single();
+
+    if (!error && data) return data;
+  } catch (err) {
+    console.warn('Aviso al guardar en lista de espera Supabase:', err.message);
+  }
+
   const entry = {
     id: generateUUID(),
-    assetId,
-    userId,
-    documentId: documentId || 'N/A',
-    email: email || 'usuario@hold3r.io',
-    createdAt: new Date().toISOString()
+    ...payload
   };
   waitlistEntries.push(entry);
   return entry;
