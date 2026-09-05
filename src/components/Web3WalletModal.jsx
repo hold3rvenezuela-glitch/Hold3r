@@ -77,8 +77,8 @@ export default function Web3WalletModal({ isOpen, onClose, onWalletConnected }) 
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md pt-24 pb-12 overflow-y-auto animate-fade-in">
-      <div className="glass-panel w-full max-w-lg p-6 sm:p-8 border border-cyan-500/40 shadow-2xl relative max-h-[88vh] overflow-y-auto my-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fade-in">
+      <div className="glass-panel w-full max-w-lg p-5 sm:p-7 border border-cyan-500/40 shadow-2xl relative max-h-[92vh] sm:max-h-[88vh] overflow-y-auto my-auto">
         
         {/* Glow Background */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />

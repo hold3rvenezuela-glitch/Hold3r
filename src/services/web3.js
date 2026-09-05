@@ -125,25 +125,26 @@ export function isWeb3Available() {
  * Solicita a la billetera inyectada o proveedor activo cambiar automáticamente a la red deseada.
  * Para redes no-EVM (TRC20, Solana), retorna un indicador especial sin invocar eth_switchEthereumChain.
  */
-export async function switchWeb3Network(networkKey = 'BEP20') {
+export async function switchWeb3Network(networkKey = 'BEP20', provider = null) {
   // Tron y Solana usan billeteras o pasarelas independientes de EVM
   if (networkKey === 'TRC20' || networkKey === 'SOLANA') {
     return { isNonEVM: true, network: networkKey };
   }
 
   const targetConfig = NETWORKS_CONFIG[networkKey] || NETWORKS_CONFIG.BEP20;
+  const activeProvider = provider || (typeof window !== 'undefined' ? (window.ethereum || window.trustwallet) : null);
 
-  if (isWeb3Available()) {
+  if (activeProvider && typeof activeProvider.request === 'function') {
     try {
-      await window.ethereum.request({
+      await activeProvider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: targetConfig.chainIdHex }]
       });
       return { success: true, network: networkKey };
     } catch (switchError) {
-      if (switchError.code === 4902) {
+      if (switchError.code === 4902 || (switchError.data && switchError.data.originalError && switchError.data.originalError.code === 4902)) {
         try {
-          await window.ethereum.request({
+          await activeProvider.request({
             method: 'wallet_addEthereumChain',
             params: [targetConfig]
           });
@@ -170,13 +171,14 @@ export async function connectWeb3Wallet() {
   }
 
   try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const provider = window.ethereum || window.trustwallet;
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
     if (!accounts || accounts.length === 0) {
       throw new Error('El usuario rechazó la conexión a la billetera Web3.');
     }
 
     const address = accounts[0];
-    const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' });
+    const chainIdHex = await provider.request({ method: 'eth_chainId' });
     const chainId = parseInt(chainIdHex, 16);
 
     let networkName = 'BEP20 (BNB Chain)';
@@ -199,8 +201,9 @@ export async function connectWeb3Wallet() {
 
 /**
  * Ejecuta y firma la llamada al contrato USDT según la arquitectura elegida.
+ * Compatible con WalletConnect provider, window.ethereum y window.trustwallet.
  */
-export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20' }) {
+export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', provider = null, userAddress = null }) {
   const amountNumber = Number(amountUsdt);
   if (isNaN(amountNumber) || amountNumber <= 0) {
     throw new Error('El monto en USDT debe ser mayor a 0.');
@@ -213,17 +216,34 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20' }) {
     throw new Error(`Para la red ${network}, transfiere directamente los USDT a la tesorería nativa (${targetTreasury}) y confirma la operación con tu TxID en la pestaña 'Verificar TxID'.`);
   }
 
-  // Redes EVM: BEP20 y ERC20
-  if (!isWeb3Available()) {
-    throw new Error('Billetera Web3 EVM no inyectada. Usa WalletConnect o abre la app desde el navegador interno de tu wallet.');
+  // Resolver proveedor activo (WalletConnect provider inyectado o window.ethereum / trustwallet)
+  const activeProvider = provider || (typeof window !== 'undefined' ? (window.ethereum || window.trustwallet) : null);
+
+  if (!activeProvider || typeof activeProvider.request !== 'function') {
+    throw new Error('Billetera Web3 EVM no detectada o desconectada. Usa WalletConnect o abre la app en el navegador de tu wallet.');
   }
 
-  const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-  if (!accounts || accounts.length === 0) {
-    throw new Error('Billetera no conectada. Conecta tu wallet Web3 primero.');
+  let fromAddress = userAddress;
+
+  if (!fromAddress) {
+    try {
+      const accounts = await activeProvider.request({ method: 'eth_accounts' });
+      if (accounts && accounts.length > 0) {
+        fromAddress = accounts[0];
+      } else {
+        const reqAccounts = await activeProvider.request({ method: 'eth_requestAccounts' });
+        if (reqAccounts && reqAccounts.length > 0) {
+          fromAddress = reqAccounts[0];
+        }
+      }
+    } catch (accErr) {
+      console.warn('Advertencia al solicitar cuentas del proveedor:', accErr);
+    }
   }
 
-  const fromAddress = accounts[0];
+  if (!fromAddress) {
+    throw new Error('Billetera no conectada. Conecta tu wallet Web3 o autoriza la sesión primero.');
+  }
 
   // Contrato Inteligente USDT para EVM
   const contractAddress = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
@@ -239,8 +259,8 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20' }) {
   const dataPayload = `0xa9059cbb${cleanRecipient}${hexAmount}`;
 
   try {
-    // Solicitud de firma y transmisión a la blockchain
-    const txHash = await window.ethereum.request({
+    // Solicitud de firma y transmisión a la blockchain vía EIP-1193 provider
+    const txHash = await activeProvider.request({
       method: 'eth_sendTransaction',
       params: [{
         from: fromAddress,

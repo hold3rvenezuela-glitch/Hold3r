@@ -3,7 +3,7 @@ import {
   Wallet, RefreshCw, Check, Copy, ExternalLink, HelpCircle, 
   Info, AlertTriangle, ShieldCheck, ArrowRight, Globe, Smartphone
 } from 'lucide-react';
-import { useWeb3ModalAccount, useWeb3Modal } from '@web3modal/ethers/react';
+import { useWeb3ModalAccount, useWeb3Modal, useWeb3ModalProvider } from '@web3modal/ethers/react';
 import { 
   sendUsdtWeb3Transfer, verifyBlockchainTxHash, 
   switchWeb3Network, getTreasuryAddress, 
@@ -34,6 +34,7 @@ export default function DepositModal({
 
   // Integración en tiempo real con WalletConnect / Ethers Web3Modal
   const { address: wcAddress, chainId: wcChainId, isConnected: wcIsConnected } = useWeb3ModalAccount();
+  const { walletProvider } = useWeb3ModalProvider();
   const { open } = useWeb3Modal();
 
   const activeWalletAddress = (wcIsConnected && wcAddress) ? wcAddress : (web3Wallet?.address || null);
@@ -64,7 +65,7 @@ export default function DepositModal({
     setSwitchingNetwork(true);
     setDepositError('');
     try {
-      const result = await switchWeb3Network(targetNet);
+      const result = await switchWeb3Network(targetNet, walletProvider);
       if (result.isNonEVM) {
         setDepositError(`La red ${targetNet} es de arquitectura No-EVM. Realiza la transferencia desde tu wallet nativa.`);
       } else if (result.requiresWeb3Modal) {
@@ -109,7 +110,7 @@ export default function DepositModal({
           throw new Error(`Para la red nativa ${selectedNetwork}, envía exactamente $${amountNum} USDT a la tesorería indicando el TxID en el campo inferior.`);
         }
 
-        if (!activeWalletAddress) {
+        if (!activeWalletAddress && !walletProvider && !hasInjected) {
           if (onOpenWeb3Modal) onOpenWeb3Modal();
           else if (open) open();
           throw new Error('Conecta tu Billetera Web3 para firmar la transferencia directa.');
@@ -118,7 +119,9 @@ export default function DepositModal({
         // Transmisión directa EVM
         const txRes = await sendUsdtWeb3Transfer({ 
           amountUsdt: amountNum, 
-          network: selectedNetwork 
+          network: selectedNetwork,
+          provider: walletProvider,
+          userAddress: activeWalletAddress
         });
         setTxSuccess(txRes);
         if (onDepositUsdt) onDepositUsdt(amountNum);

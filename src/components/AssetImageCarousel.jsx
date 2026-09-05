@@ -119,7 +119,7 @@ export default function AssetImageCarousel({
       {/* ── Lightbox / Ampliación en Pantalla Completa Modal ── */}
       {isLightboxOpen && (
         <div 
-          className="fixed inset-0 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-between p-4 sm:p-8"
+          className="fixed inset-0 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-between p-2 sm:p-6"
           style={{ zIndex: 999999 }}
           onClick={closeLightbox}
         >
@@ -142,13 +142,13 @@ export default function AssetImageCarousel({
 
           {/* Contenido Central / Imagen Ampliada */}
           <div 
-            className="relative flex-1 w-full max-w-5xl my-4 flex items-center justify-center overflow-hidden"
+            className="relative flex-1 w-full max-w-5xl my-2 flex items-center justify-center overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             <img
               src={currentImage}
               alt={`${title} - Ampliada ${currentIndex + 1}`}
-              className="max-h-[82vh] max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
+              className="max-h-[85vh] max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
             />
 
             {/* Controles de Navegación en Lightbox */}

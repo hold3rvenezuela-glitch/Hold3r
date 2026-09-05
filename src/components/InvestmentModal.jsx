@@ -3,20 +3,21 @@ import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sp
 import confetti from 'canvas-confetti';
 import { investInAsset, reserveAssetSlot, getActiveReservation, releaseAssetReservation, joinAssetWaitlist, fetchActiveReservationsSumForAsset } from '../services/api';
 import { sendUsdtWeb3Transfer, isWeb3Available } from '../services/web3';
-import { useWeb3ModalAccount } from '@web3modal/ethers/react';
+import { useWeb3ModalAccount, useWeb3ModalProvider } from '@web3modal/ethers/react';
 import AssetImageCarousel from './AssetImageCarousel';
 
 
 // Helper: fila de especificación técnica (icon + label + value)
 const SpecRow = ({ icon, label, value, mono = false, fullWidth = false }) => (
-  <div className={fullWidth ? 'col-span-2' : ''}>
-    <span className="text-[10px] text-neutral-500 uppercase tracking-wider block">{icon} {label}</span>
-    <span className={`text-xs font-semibold text-white block truncate ${mono ? 'font-mono' : ''}`}>{value}</span>
+  <div className={fullWidth ? 'col-span-2 min-w-0' : 'min-w-0'}>
+    <span className="text-[10px] text-neutral-500 uppercase tracking-wider block font-semibold">{icon} {label}</span>
+    <span className={`text-xs font-semibold text-white block break-words whitespace-normal leading-relaxed ${mono ? 'font-mono' : ''}`}>{value}</span>
   </div>
 );
 
 export default function InvestmentModal({ asset, userProfile, wallet, onClose, onSuccess, onOpenWeb3Modal }) {
   const { address: wcAddress, isConnected: wcIsConnected } = useWeb3ModalAccount();
+  const { walletProvider } = useWeb3ModalProvider();
   const activeWalletAddress = (wcIsConnected && wcAddress) ? wcAddress : null;
 
   if (!asset) return null;
@@ -206,7 +207,7 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
       return;
     }
 
-    if (paymentMethod === 'direct_web3' && !activeWalletAddress && !isWeb3Available()) {
+    if (paymentMethod === 'direct_web3' && !activeWalletAddress && !walletProvider && !isWeb3Available()) {
       if (onOpenWeb3Modal) onOpenWeb3Modal();
       setErrorMsg('Conecta tu Billetera Web3 para firmar la transferencia directa.');
       return;
@@ -218,7 +219,12 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
       let contractTxHash = null;
 
       if (paymentMethod === 'direct_web3') {
-        const txRes = await sendUsdtWeb3Transfer({ amountUsdt: numAmount, network: selectedNetwork });
+        const txRes = await sendUsdtWeb3Transfer({ 
+          amountUsdt: numAmount, 
+          network: selectedNetwork,
+          provider: walletProvider,
+          userAddress: activeWalletAddress
+        });
         contractTxHash = txRes.txHash;
       }
 
@@ -250,8 +256,8 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md pt-24 pb-12 overflow-y-auto animate-fade-in">
-      <div className="glass-panel w-full max-w-xl p-6 sm:p-8 border border-emerald-500/40 shadow-2xl relative max-h-[85vh] overflow-y-auto my-auto space-y-5">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fade-in">
+      <div className="glass-panel w-full max-w-xl p-4 sm:p-7 border border-emerald-500/40 shadow-2xl relative max-h-[92vh] sm:max-h-[88vh] overflow-y-auto my-auto space-y-4">
         
         {/* Glow */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -445,9 +451,9 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
                     : 'text-rose-400 bg-rose-500/15 border-rose-500/30';
                   const emoji = numVal >= 8 ? '🟢' : numVal >= 5 ? '🟡' : '🔴';
                   return (
-                    <div key={key} className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] text-neutral-400 truncate">{ratingLabels[key] || key}</span>
-                      <span className={`text-xs font-extrabold font-mono border rounded-lg px-2 py-0.5 shrink-0 ${color}`}>
+                    <div key={key} className="flex items-center justify-between gap-1.5 min-w-0">
+                      <span className="text-[10px] text-neutral-400 truncate shrink min-w-0">{ratingLabels[key] || key}</span>
+                      <span className={`text-xs font-extrabold font-mono border rounded-lg px-1.5 py-0.5 shrink-0 ${color}`}>
                         {emoji} {numVal}/10
                       </span>
                     </div>
