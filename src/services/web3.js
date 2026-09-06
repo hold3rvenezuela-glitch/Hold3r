@@ -368,7 +368,31 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     parsedAmountBigInt
   ]);
 
-  // 5. Estimación previa de Gas (eth_estimateGas) y consulta de GasPrice (eth_gasPrice)
+  // 5a. Pre-vuelo: Verificar Saldo USDT de la billetera (balanceOf via eth_call)
+  try {
+    const balanceOfData = ERC20_INTERFACE.encodeFunctionData('balanceOf', [formattedFrom]);
+    const balanceHexResult = await activeProvider.request({
+      method: 'eth_call',
+      params: [{ to: formattedContract, data: balanceOfData }, 'latest']
+    });
+    if (balanceHexResult && balanceHexResult !== '0x') {
+      const usdtBalance = BigInt(balanceHexResult);
+      if (usdtBalance < parsedAmountBigInt) {
+        const balanceFormatted = Number(usdtBalance) / Math.pow(10, decimals);
+        throw new Error(
+          `Saldo USDT insuficiente en tu billetera.\n` +
+          `Disponible: ${balanceFormatted.toFixed(2)} USDT | Requerido: ${amountNumber.toFixed(2)} USDT.\n` +
+          `Adquiere más USDT en Binance, Bybit o cualquier exchange compatible con BEP20.`
+        );
+      }
+    }
+  } catch (balErr) {
+    // Solo propagar si es nuestro error de saldo — los errores de RPC se ignoran
+    if (balErr.message && balErr.message.includes('Saldo USDT insuficiente')) throw balErr;
+    console.warn('No se pudo verificar el saldo USDT previo (continuando):', balErr.message);
+  }
+
+  // 5b. Estimación previa de Gas (eth_estimateGas) y consulta de GasPrice (eth_gasPrice)
   const txObject = {
     from: formattedFrom,
     to: formattedContract,
@@ -390,7 +414,27 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
       estimatedGasHex = '0x' + bufferedGas.toString(16);
     }
   } catch (estErr) {
-    console.warn('Estimación eth_estimateGas fallback a 90k:', estErr);
+    // Si eth_estimateGas retorna un error de revert de contrato, la tx TAMBIÉN se revertirá.
+    // Detectar errores de ejecución/revert vs errores de transporte de red.
+    const errMsg = (estErr.message || '').toLowerCase();
+    const errCode = estErr.code;
+    const isContractRevert =
+      errCode === -32000 || errCode === -32603 ||
+      errMsg.includes('revert') ||
+      errMsg.includes('execution reverted') ||
+      errMsg.includes('always failing') ||
+      errMsg.includes('insufficient funds for transfer');
+
+    if (isContractRevert) {
+      // La tx se revertiría en la blockchain — abortamos antes de abrir la wallet
+      throw new Error(
+        `La transacción sería revertida por la BSC antes de ejecutarse.\n` +
+        `Causa probable: saldo USDT insuficiente o gas nativo (BNB) insuficiente.\n` +
+        `Detalle técnico: ${estErr.message || 'eth_estimateGas revert'}`
+      );
+    }
+    // Error de red/RPC: continuar con el gas límite de seguridad
+    console.warn('eth_estimateGas no disponible, usando fallback 90k gas:', estErr.message);
   }
 
   try {
