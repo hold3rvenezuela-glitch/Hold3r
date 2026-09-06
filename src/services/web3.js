@@ -424,13 +424,18 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
       params: [finalTxParams]
     });
 
+    if (!txHash || typeof txHash !== 'string') {
+      throw new Error('La billetera no devolvió un hash de transacción válido.');
+    }
+
     let explorerUrl = `https://bscscan.com/tx/${txHash}`;
     if (network === 'ERC20') explorerUrl = `https://etherscan.io/tx/${txHash}`;
-    else if (network === 'TRC20') explorerUrl = `https://tronscan.org/#/transaction/${txHash}`;
-    else if (network === 'SOLANA') explorerUrl = `https://solscan.io/tx/${txHash}`;
 
+    // Retorna estado PENDIENTE: el hash existe pero aún no está confirmado en la red.
+    // El llamador DEBE invocar waitForTransactionReceipt(txHash, provider) para
+    // esperar la confirmación real antes de marcar el depósito como exitoso.
     return {
-      success: true,
+      pending: true,
       txHash,
       treasuryAddress: formattedTreasury,
       explorerUrl,
@@ -438,8 +443,75 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     };
   } catch (err) {
     console.error('Error al ejecutar transacción en el contrato inteligente:', err);
-    throw new Error(err.message || 'Transacción cancelada por el usuario en la billetera.');
+    // Propagar mensajes de rechazo del usuario claramente
+    const userRejected = err.code === 4001 || (err.message && /user (rejected|denied|cancelled)/i.test(err.message));
+    if (userRejected) {
+      throw new Error('Transacción rechazada por el usuario en la billetera.');
+    }
+    throw new Error(err.message || 'Transacción cancelada o fallida en la billetera.');
   }
+}
+
+/**
+ * Espera la confirmación real de una transacción en la blockchain mediante polling de eth_getTransactionReceipt.
+ * - Lanza error si la transacción se revirtió (status = 0x0).
+ * - Lanza error si se agota el tiempo de espera sin confirmación (timeout).
+ * @param {string} txHash - Hash de la transacción a esperar.
+ * @param {object} provider - Proveedor EIP-1193 activo (walletProvider, window.ethereum, etc).
+ * @param {object} options - { maxAttempts = 60, intervalMs = 3000 } Configura el polling.
+ * @returns {object} Receipt confirmado con blockNumber, gasUsed y status.
+ */
+export async function waitForTransactionReceipt(txHash, provider, options = {}) {
+  const { maxAttempts = 60, intervalMs = 3000 } = options;
+  // BSC produce un bloque cada ~3s, 60 intentos = ~3 minutos máximo de espera.
+
+  if (!txHash || typeof txHash !== 'string') {
+    throw new Error('waitForTransactionReceipt: txHash inválido o vacío.');
+  }
+  if (!provider || typeof provider.request !== 'function') {
+    throw new Error('waitForTransactionReceipt: proveedor Web3 no disponible.');
+  }
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let receipt = null;
+    try {
+      receipt = await provider.request({
+        method: 'eth_getTransactionReceipt',
+        params: [txHash]
+      });
+    } catch (rpcErr) {
+      console.warn(`Polling receipt intento ${attempt}/${maxAttempts} - error RPC:`, rpcErr.message);
+    }
+
+    if (receipt) {
+      // receipt.status: '0x1' = éxito, '0x0' = revertida
+      if (receipt.status === '0x0' || receipt.status === 0) {
+        throw new Error(
+          `La transacción fue revertida por la blockchain (status 0x0).\n` +
+          `TxHash: ${txHash}\n` +
+          `Bloque: ${receipt.blockNumber}\n` +
+          `Posibles causas: saldo USDT insuficiente, aprobación (allowance) no concedida, o gas insuficiente.`
+        );
+      }
+      // status === '0x1' — transacción confirmada y exitosa
+      return {
+        confirmed: true,
+        txHash,
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed,
+        status: receipt.status
+      };
+    }
+
+    // Transacción aún pendiente — esperar el intervalo configurado
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+
+  // Se agotó el tiempo de espera
+  throw new Error(
+    `Tiempo de espera agotado esperando confirmación de la transacción.\n` +
+    `TxHash: ${txHash}\nPuedes verificar el estado en BscScan.`
+  );
 }
 
 /**
@@ -456,7 +528,7 @@ export async function verifyBlockchainTxHash(txHash, network = 'BEP20') {
 
   const cleanTx = txHash.trim();
   
-  // Simulación de verificación de confirmaciones de bloque
+  // Espera mínima de procesamiento de red antes de consultar el explorador
   await new Promise(resolve => setTimeout(resolve, 1500));
 
   let explorerUrl = `https://bscscan.com/tx/${cleanTx}`;

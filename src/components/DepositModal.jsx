@@ -8,7 +8,8 @@ import {
   sendUsdtWeb3Transfer, verifyBlockchainTxHash, 
   switchWeb3Network, getTreasuryAddress, 
   validateTxHashForNetwork, validateAddressForNetwork,
-  isMobileBrowser, getMobileWalletDeepLink, isWeb3Available
+  isMobileBrowser, getMobileWalletDeepLink, isWeb3Available,
+  waitForTransactionReceipt
 } from '../services/web3';
 import { verifyAndCreditDeposit } from '../services/api';
 
@@ -28,6 +29,10 @@ export default function DepositModal({
   const [selectedNetwork, setSelectedNetwork] = useState('BEP20');
   const [inputTxHash, setInputTxHash] = useState('');
   const [verifyingTx, setVerifyingTx] = useState(false);
+  // Estados granulares de confirmación:
+  // 'idle' | 'signing' | 'confirming' | 'credited'
+  const [txConfirmingStatus, setTxConfirmingStatus] = useState('idle');
+  const [pendingTxHash, setPendingTxHash] = useState(null);
   const [txSuccess, setTxSuccess] = useState(null);
   const [depositError, setDepositError] = useState('');
   const [switchingNetwork, setSwitchingNetwork] = useState(false);
@@ -50,6 +55,8 @@ export default function DepositModal({
   useEffect(() => {
     setDepositError('');
     setTxSuccess(null);
+    setTxConfirmingStatus('idle');
+    setPendingTxHash(null);
   }, [selectedNetwork, isOpen]);
 
   if (!isOpen) return null;
@@ -97,6 +104,8 @@ export default function DepositModal({
     e.preventDefault();
     setDepositError('');
     setVerifyingTx(true);
+    setTxConfirmingStatus('idle');
+    setPendingTxHash(null);
 
     try {
       const amountNum = Number(depositAmount);
@@ -117,30 +126,65 @@ export default function DepositModal({
           throw new Error('Conecta tu Billetera Web3 para firmar la transferencia directa.');
         }
 
-        // Transmisión directa EVM
-        const txRes = await sendUsdtWeb3Transfer({ 
+        // ✅ Validación anti-auto-transferencia:
+        // Impedir que se intente enviar fondos si la wallet conectada ES la tesorería.
+        if (
+          activeWalletAddress &&
+          currentTreasury &&
+          activeWalletAddress.toLowerCase() === currentTreasury.toLowerCase()
+        ) {
+          throw new Error(
+            `La billetera conectada (${activeWalletAddress.slice(0,8)}...) es la misma dirección de la Tesorería HOLD3R. ` +
+            `No puedes enviar fondos a ti mismo. Usa otra billetera.`
+          );
+        }
+
+        // FASE 1 — Firma en la billetera
+        setTxConfirmingStatus('signing');
+        const pendingRes = await sendUsdtWeb3Transfer({ 
           amountUsdt: amountNum, 
           network: selectedNetwork,
           provider: walletProvider,
           userAddress: activeWalletAddress
         });
-        
-        // Acreditación automática en Backend Supabase (Edge Function / RPC)
+
+        // FASE 2 — Esperar confirmación real en blockchain (receipt polling)
+        const resolvedProvider = walletProvider || window.ethereum || window.trustwallet;
+        setPendingTxHash(pendingRes.txHash);
+        setTxConfirmingStatus('confirming');
+
+        // Polling: hasta 60 intentos cada 3s (~3 min máximo en BSC)
+        const receipt = await waitForTransactionReceipt(
+          pendingRes.txHash,
+          resolvedProvider,
+          { maxAttempts: 60, intervalMs: 3000 }
+        );
+
+        // receipt.confirmed === true y status === 0x1: transacción verificada en la red
+        // FASE 3 — Acreditación en Supabase SOLO después de confirmación real
+        setTxConfirmingStatus('credited');
         try {
           await verifyAndCreditDeposit({
-            userId: activeWalletAddress || 'demo_user',
-            txHash: txRes.txHash,
+            userId: activeWalletAddress || 'unknown_user',
+            txHash: pendingRes.txHash,
             network: selectedNetwork,
             amountUsdt: amountNum
           });
         } catch (credErr) {
-          console.warn('Aviso de acreditación atómica:', credErr);
+          // Aviso — la tx ya está confirmada on-chain, el crédito se re-intentará automáticamente
+          console.warn('Aviso de acreditación atómica (tx ya confirmada on-chain):', credErr);
         }
 
-        setTxSuccess(txRes);
+        setTxSuccess({
+          ...pendingRes,
+          success: true,
+          blockNumber: receipt.blockNumber,
+          gasUsed: receipt.gasUsed
+        });
         if (onDepositUsdt) onDepositUsdt(amountNum);
+
       } else {
-        // Validación del TxID por formato de red
+        // MODO TxID: validación del hash por formato de red
         if (!inputTxHash || !validateTxHashForNetwork(inputTxHash, selectedNetwork)) {
           let reqFormat = '64 caracteres hexadecimales (0x...)';
           if (selectedNetwork === 'TRC20') reqFormat = '64 caracteres hexadecimales de Tron';
@@ -149,12 +193,14 @@ export default function DepositModal({
           throw new Error(`TxID con formato inválido para la red ${selectedNetwork}. Formato requerido: ${reqFormat}`);
         }
 
+        setTxConfirmingStatus('confirming');
         const verified = await verifyBlockchainTxHash(inputTxHash, selectedNetwork);
         
-        // Acreditación automática en Backend Supabase
+        // Acreditación en Supabase tras verificación del TxID
+        setTxConfirmingStatus('credited');
         try {
           await verifyAndCreditDeposit({
-            userId: activeWalletAddress || 'demo_user',
+            userId: activeWalletAddress || 'unknown_user',
             txHash: inputTxHash,
             network: selectedNetwork,
             amountUsdt: amountNum
@@ -167,6 +213,7 @@ export default function DepositModal({
         if (onDepositUsdt) onDepositUsdt(amountNum);
       }
     } catch (err) {
+      setTxConfirmingStatus('idle');
       setDepositError(err.message || 'Error al procesar la transferencia.');
     } finally {
       setVerifyingTx(false);
@@ -354,15 +401,54 @@ export default function DepositModal({
           </div>
         )}
 
-        {/* Success Banner */}
+        {/* Banner: Fase de Firma en Billetera */}
+        {txConfirmingStatus === 'signing' && !txSuccess && (
+          <div className="p-3.5 rounded-2xl mb-4 bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs animate-fade-in flex items-start gap-2.5">
+            <RefreshCw className="w-4 h-4 text-amber-400 shrink-0 animate-spin mt-0.5" />
+            <div>
+              <p className="font-bold text-amber-300 mb-0.5">Esperando firma en la billetera...</p>
+              <p className="text-[11px] text-neutral-300">Revisa tu wallet (MetaMask / Trust Wallet) y confirma la transacción para continuar.</p>
+            </div>
+          </div>
+        )}
+
+        {/* Banner: Fase de Confirmación en Blockchain */}
+        {txConfirmingStatus === 'confirming' && pendingTxHash && !txSuccess && (
+          <div className="p-3.5 rounded-2xl mb-4 bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 text-xs animate-fade-in">
+            <div className="flex items-center gap-2 font-bold text-cyan-300 mb-1.5">
+              <RefreshCw className="w-4 h-4 text-cyan-400 shrink-0 animate-spin" />
+              Procesando en la red blockchain...
+            </div>
+            <p className="text-[11px] text-neutral-300 mb-1.5">
+              La transacción fue enviada. Esperando confirmación de bloque en {selectedNetwork} (~3 seg en BSC).
+              <br />¡No cierres esta ventana!
+            </p>
+            <a
+              href={`https://bscscan.com/tx/${pendingTxHash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-cyan-400 hover:underline"
+            >
+              <ExternalLink className="w-3 h-3" />
+              Ver en BscScan: {pendingTxHash.slice(0, 12)}...
+            </a>
+          </div>
+        )}
+
+        {/* Banner: Éxito con Confirmación Real */}
         {txSuccess && (
           <div className="p-4 rounded-2xl space-y-2 mb-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 animate-fade-in">
             <div className="flex items-center gap-2 font-bold text-sm text-emerald-400">
-              <Check className="w-5 h-5" /> Depósito Confirmado Exitosamente
+              <Check className="w-5 h-5" /> Depósito Confirmado en Blockchain
             </div>
             <p className="text-[11px] font-mono break-all p-2.5 bg-black/40 rounded-xl text-neutral-300 border border-white/10">
               TxID: <span className="text-white font-bold">{txSuccess.txHash}</span>
             </p>
+            {txSuccess.blockNumber && (
+              <p className="text-[11px] text-emerald-300">
+                ✅ Bloque confirmado: <span className="font-mono font-bold text-white">{txSuccess.blockNumber}</span>
+              </p>
+            )}
             {txSuccess.explorerUrl && (
               <a 
                 href={txSuccess.explorerUrl} 
@@ -507,7 +593,7 @@ export default function DepositModal({
           <div className="flex justify-end gap-2 pt-2">
             <button 
               type="button" 
-              onClick={() => { onClose(); setTxSuccess(null); setDepositError(''); }} 
+              onClick={() => { onClose(); setTxSuccess(null); setDepositError(''); setTxConfirmingStatus('idle'); setPendingTxHash(null); }} 
               className="btn-secondary text-xs py-2.5 px-4"
             >
               Cancelar
@@ -517,10 +603,20 @@ export default function DepositModal({
               disabled={verifyingTx} 
               className="btn-primary text-xs py-2.5 px-5 flex items-center gap-2"
             >
-              {verifyingTx ? (
+              {txConfirmingStatus === 'signing' ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  Procesando...
+                  Firmando en wallet...
+                </>
+              ) : txConfirmingStatus === 'confirming' ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Esperando confirmación...
+                </>
+              ) : txConfirmingStatus === 'credited' ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Acreditando saldo...
                 </>
               ) : depositMode === 'direct' && currentNetworkConfig.type === 'EVM' ? (
                 <>
