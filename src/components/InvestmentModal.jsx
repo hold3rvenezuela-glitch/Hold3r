@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, Shield, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles, Wallet, Globe, RefreshCw, Clock, Lock, Check, UserPlus, Users, TrendingUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { investInAsset, reserveAssetSlot, getActiveReservation, releaseAssetReservation, joinAssetWaitlist, fetchActiveReservationsSumForAsset } from '../services/api';
-import { sendUsdtWeb3Transfer, isWeb3Available } from '../services/web3';
+import { sendUsdtWeb3Transfer, buyRwaSharesERC1155, isWeb3Available } from '../services/web3';
 import { useWeb3ModalAccount, useWeb3ModalProvider } from '@web3modal/ethers/react';
 import AssetImageCarousel from './AssetImageCarousel';
 
@@ -219,11 +219,18 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
       let contractTxHash = null;
 
       if (paymentMethod === 'direct_web3') {
-        const txRes = await sendUsdtWeb3Transfer({ 
-          amountUsdt: numAmount, 
-          network: selectedNetwork,
+        const txRes = await buyRwaSharesERC1155({
+          assetId: asset.id,
+          amountUsdt: numAmount,
           provider: walletProvider,
-          userAddress: activeWalletAddress
+          userAddress: activeWalletAddress,
+          onProgress: (stepInfo) => {
+            if (stepInfo.step === 'approving') {
+              setErrorMsg('📝 Paso 1/2: Firma la aprobación de USDT en tu billetera...');
+            } else if (stepInfo.step === 'purchasing') {
+              setErrorMsg('🪙 Paso 2/2: Firma la compra y minado de tokens RWA en tu billetera...');
+            }
+          }
         });
         contractTxHash = txRes.txHash;
       }

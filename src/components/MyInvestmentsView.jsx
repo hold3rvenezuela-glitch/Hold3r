@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText, Printer, X, Download } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { fetchUserShares } from '../services/api';
 
 export default function MyInvestmentsView({ userProfile, initialShares = [], onRefresh }) {
@@ -263,10 +264,31 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
                 <p className="text-[11px] text-neutral-400 font-mono">Documento oficial generado con hash criptográfico único.</p>
                 <div className="flex items-center gap-3">
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => {
+                      const doc = new jsPDF();
+                      const title = asset.title || 'Activo RWA';
+                      const name = userProfile?.full_name || 'Inversionista Autenticado';
+                      const docId = userProfile?.document_id || 'V-00000000';
+                      
+                      doc.setFontSize(16);
+                      doc.text('HOLD3R - CONTRATO PRIVADO RWA', 20, 20);
+                      
+                      doc.setFontSize(10);
+                      doc.text(`Fecha de Emisión: ${purchasedDate}`, 20, 30);
+                      doc.text(`Titular: ${name} (${docId})`, 20, 40);
+                      doc.text(`Activo Adquirido: ${title}`, 20, 50);
+                      doc.text(`Monto Invertido: $${numAmount.toLocaleString()} USDT`, 20, 60);
+                      doc.text(`Participación: ${Number(share.shares_percentage || 0).toFixed(4)}%`, 20, 70);
+                      doc.text(`Hash de Firma / TxHash: ${txHash}`, 20, 80);
+                      
+                      doc.setFontSize(8);
+                      doc.text('Este documento respalda legalmente la propiedad fraccionada en el protocolo HOLD3R.', 20, 100);
+                      
+                      doc.save(`Contrato_HOLD3R_${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+                    }}
                     className="btn-primary text-xs flex items-center gap-2 bg-emerald-500 text-neutral-950 font-bold"
                   >
-                    <Printer className="w-4 h-4" /> Imprimir / Guardar en PDF
+                    <Download className="w-4 h-4" /> Descargar Contrato PDF
                   </button>
                 </div>
               </div>

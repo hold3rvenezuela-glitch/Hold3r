@@ -1,6 +1,23 @@
 import { Interface, getAddress, parseUnits } from 'ethers';
 
 /**
+ * ABI mínimo del contrato HOLD3R_ERC1155 para la función purchaseShares
+ */
+const ERC1155_INTERFACE = new Interface([
+  "function purchaseShares(uint256 tokenId, uint256 shareCount) returns (bool)",
+  "function calculateCost(uint256 tokenId, uint256 shareCount) view returns (uint256)",
+  "function availableShares(uint256 tokenId) view returns (uint256)",
+  "function getInvestorShares(uint256 tokenId, address investor) view returns (uint256)"
+]);
+
+/**
+ * Dirección del Contrato HOLD3R_ERC1155 en BSC Mainnet (se configura en .env como VITE_HOLD3R_ERC1155_ADDRESS)
+ */
+export const HOLD3R_ERC1155_ADDRESS = 
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_HOLD3R_ERC1155_ADDRESS) ||
+  null;
+
+/**
  * Interfaz ABI Estándar ERC20 / BEP20 oficial de Ethers
  */
 const ERC20_INTERFACE = new Interface([
@@ -609,5 +626,221 @@ export async function buyRwaSharesWeb3({ assetId, shareCount = 1, amountUsdt, ne
     assetId,
     shareCount,
     timestamp: new Date().toISOString()
+  };
+}
+
+/**
+ * Paso 1 del flujo ERC-1155: Aprueba al contrato HOLD3R_ERC1155 para gastar USDT del inversor.
+ * El usuario firma un único mensaje de aprobación en su wallet. Sin este paso, purchaseShares
+ * fallará en el contrato con "Debes aprobar el contrato HOLD3R".
+ *
+ * @param {string} spenderAddress  Dirección del contrato HOLD3R_ERC1155
+ * @param {number} amountUsdt      Monto en USDT a aprobar (ej. 100 para 100 USDT)
+ * @param {string} network         'BEP20' | 'ERC20'
+ * @param {object} provider        Proveedor EIP-1193 activo
+ * @param {string} userAddress     Dirección de la wallet del inversor
+ * @returns {{ pending: true, txHash: string, explorerUrl: string }}
+ */
+export async function approveUsdtForContract({ spenderAddress, amountUsdt, network = 'BEP20', provider = null, userAddress = null }) {
+  const activeProvider = provider || (typeof window !== 'undefined' ? (window.ethereum || window.trustwallet) : null);
+  if (!activeProvider || typeof activeProvider.request !== 'function') {
+    throw new Error('Billetera Web3 no detectada. Conecta MetaMask o Trust Wallet.');
+  }
+
+  const rawContract = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
+  const formattedContract = getAddress(rawContract.trim());
+  const formattedSpender  = getAddress(spenderAddress.trim());
+
+  let fromAddress = userAddress;
+  if (!fromAddress) {
+    const accounts = await activeProvider.request({ method: 'eth_accounts' });
+    fromAddress = accounts?.[0];
+  }
+  if (!fromAddress) throw new Error('Billetera no conectada.');
+  const formattedFrom = getAddress(fromAddress.trim());
+
+  const decimals = network === 'BEP20' ? 18 : 6;
+  const parsedAmount = parseUnits(String(amountUsdt), decimals);
+
+  // Codificar approve(spender, amount)
+  const approveData = ERC20_INTERFACE.encodeFunctionData('approve', [formattedSpender, parsedAmount]);
+
+  const txObject = { from: formattedFrom, to: formattedContract, data: approveData, value: '0x0' };
+
+  // Estimación de gas
+  let gasHex = '0xC350'; // 50,000 fallback para approve
+  try {
+    const est = await activeProvider.request({ method: 'eth_estimateGas', params: [txObject] });
+    if (est) gasHex = '0x' + ((BigInt(est) * 120n) / 100n).toString(16);
+  } catch {}
+
+  let gasPriceHex = null;
+  try {
+    gasPriceHex = await activeProvider.request({ method: 'eth_gasPrice', params: [] });
+  } catch {}
+
+  const finalParams = { ...txObject, gas: gasHex };
+  if (gasPriceHex) finalParams.gasPrice = gasPriceHex;
+
+  const txHash = await activeProvider.request({ method: 'eth_sendTransaction', params: [finalParams] });
+  if (!txHash || typeof txHash !== 'string') throw new Error('La wallet no devolvió un hash de aprobación válido.');
+
+  const explorerBase = network === 'ERC20' ? 'https://etherscan.io/tx/' : 'https://bscscan.com/tx/';
+  return { pending: true, txHash, explorerUrl: explorerBase + txHash };
+}
+
+/**
+ * Paso 2 del flujo ERC-1155: Llama a purchaseShares(tokenId, shareCount) en el contrato HOLD3R_ERC1155.
+ * Requiere que el approve del paso 1 ya esté confirmado en la blockchain.
+ *
+ * @param {string} contractAddress Dirección del contrato HOLD3R_ERC1155
+ * @param {number} tokenId         Token ID del activo (ej. 1 = Runner TRD)
+ * @param {number} shareCount      Número de fracciones a comprar
+ * @param {string} network         'BEP20' | 'ERC20'
+ * @param {object} provider        Proveedor EIP-1193 activo
+ * @param {string} userAddress     Dirección de la wallet del inversor
+ * @returns {{ pending: true, txHash: string, explorerUrl: string }}
+ */
+export async function callPurchaseSharesOnContract({ contractAddress, tokenId, shareCount, network = 'BEP20', provider = null, userAddress = null }) {
+  const activeProvider = provider || (typeof window !== 'undefined' ? (window.ethereum || window.trustwallet) : null);
+  if (!activeProvider || typeof activeProvider.request !== 'function') {
+    throw new Error('Billetera Web3 no detectada.');
+  }
+
+  const formattedContract = getAddress(contractAddress.trim());
+
+  let fromAddress = userAddress;
+  if (!fromAddress) {
+    const accounts = await activeProvider.request({ method: 'eth_accounts' });
+    fromAddress = accounts?.[0];
+  }
+  if (!fromAddress) throw new Error('Billetera no conectada.');
+  const formattedFrom = getAddress(fromAddress.trim());
+
+  // Codificar purchaseShares(tokenId, shareCount)
+  const purchaseData = ERC1155_INTERFACE.encodeFunctionData('purchaseShares', [
+    BigInt(tokenId),
+    BigInt(shareCount)
+  ]);
+
+  const txObject = { from: formattedFrom, to: formattedContract, data: purchaseData, value: '0x0' };
+
+  // Estimación de gas — si falla por revert del contrato, propagar el error
+  let gasHex = '0x30D40'; // 200,000 fallback para purchaseShares
+  try {
+    const est = await activeProvider.request({ method: 'eth_estimateGas', params: [txObject] });
+    if (est) gasHex = '0x' + ((BigInt(est) * 125n) / 100n).toString(16);
+  } catch (estErr) {
+    const msg = (estErr.message || '').toLowerCase();
+    const isRevert = estErr.code === -32000 || estErr.code === -32603
+      || msg.includes('revert') || msg.includes('execution reverted') || msg.includes('always failing');
+    if (isRevert) {
+      throw new Error(
+        'El contrato HOLD3R rechazaría esta transacción.\n' +
+        'Posibles causas: aprobación USDT insuficiente, saldo USDT bajo, o el activo no está activo.\n' +
+        `Detalle: ${estErr.message}`
+      );
+    }
+  }
+
+  let gasPriceHex = null;
+  try {
+    gasPriceHex = await activeProvider.request({ method: 'eth_gasPrice', params: [] });
+  } catch {}
+
+  const finalParams = { ...txObject, gas: gasHex };
+  if (gasPriceHex) finalParams.gasPrice = gasPriceHex;
+
+  const txHash = await activeProvider.request({ method: 'eth_sendTransaction', params: [finalParams] });
+  if (!txHash || typeof txHash !== 'string') throw new Error('La wallet no devolvió un hash de compra válido.');
+
+  const explorerBase = network === 'ERC20' ? 'https://etherscan.io/tx/' : 'https://bscscan.com/tx/';
+  return { pending: true, txHash, explorerUrl: explorerBase + txHash };
+}
+
+/**
+ * Orquestador del flujo completo ERC-1155 de 2 pasos.
+ * 
+ * Flujo:
+ *   [1] approve(HOLD3R_ERC1155, totalCost)  → firma en wallet → waitReceipt
+ *   [2] purchaseShares(tokenId, shareCount) → firma en wallet → waitReceipt
+ *   → retorna { success: true, txHash (del paso 2), approveTxHash, tokenId, shareCount }
+ *
+ * @param {object} opts
+ * @param {string}   opts.contractAddress  Dirección del contrato HOLD3R_ERC1155
+ * @param {number}   opts.tokenId          Token ID del activo RWA
+ * @param {number}   opts.shareCount       Número de fracciones a comprar
+ * @param {number}   opts.amountUsdt       Monto total en USDT (debe coincidir con tokenId × pricePerShare)
+ * @param {string}   opts.network          'BEP20' | 'ERC20'
+ * @param {object}   opts.provider         Proveedor EIP-1193
+ * @param {string}   opts.userAddress      Dirección del inversor
+ * @param {function} opts.onProgress       Callback: ('approving'|'approved'|'buying'|'confirmed', txHash?) => void
+ * @returns {{ success: true, txHash, approveTxHash, explorerUrl, tokenId, shareCount, network }}
+ */
+export async function buyRwaSharesERC1155({
+  contractAddress,
+  tokenId,
+  shareCount,
+  amountUsdt,
+  network = 'BEP20',
+  provider = null,
+  userAddress = null,
+  onProgress = null
+}) {
+  const notify = (status, hash = null) => {
+    if (typeof onProgress === 'function') {
+      try { onProgress(status, hash); } catch {}
+    }
+  };
+
+  if (!contractAddress || !/^0x[a-fA-F0-9]{40}$/.test(contractAddress)) {
+    throw new Error('Dirección del contrato HOLD3R_ERC1155 inválida. Verifica VITE_HOLD3R_ERC1155_ADDRESS en .env');
+  }
+  if (!tokenId || Number(tokenId) <= 0) throw new Error('TokenId del activo inválido.');
+  if (!shareCount || Number(shareCount) <= 0) throw new Error('shareCount debe ser >= 1.');
+  if (!amountUsdt || Number(amountUsdt) <= 0) throw new Error('amountUsdt debe ser > 0.');
+
+  // ── PASO 1: Approve ─────────────────────────────────────────────────────────
+  notify('approving');
+  const approveRes = await approveUsdtForContract({
+    spenderAddress: contractAddress,
+    amountUsdt,
+    network,
+    provider,
+    userAddress
+  });
+
+  notify('waitingApprove', approveRes.txHash);
+  const activeProvider = provider || (typeof window !== 'undefined' ? (window.ethereum || window.trustwallet) : null);
+  await waitForTransactionReceipt(approveRes.txHash, activeProvider, { maxAttempts: 40, intervalMs: 3000 });
+
+  notify('approved', approveRes.txHash);
+
+  // ── PASO 2: purchaseShares ──────────────────────────────────────────────────
+  notify('buying');
+  const purchaseRes = await callPurchaseSharesOnContract({
+    contractAddress,
+    tokenId,
+    shareCount,
+    network,
+    provider,
+    userAddress
+  });
+
+  notify('waitingConfirm', purchaseRes.txHash);
+  const receipt = await waitForTransactionReceipt(purchaseRes.txHash, activeProvider, { maxAttempts: 60, intervalMs: 3000 });
+
+  notify('confirmed', purchaseRes.txHash);
+
+  return {
+    success:        true,
+    txHash:         purchaseRes.txHash,
+    approveTxHash:  approveRes.txHash,
+    explorerUrl:    purchaseRes.explorerUrl,
+    blockNumber:    receipt.blockNumber,
+    tokenId,
+    shareCount,
+    network,
+    timestamp:      new Date().toISOString()
   };
 }
