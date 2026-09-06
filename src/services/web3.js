@@ -272,7 +272,11 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     console.warn('No se pudo verificar la red activa:', cErr);
   }
 
-  if (currentChainIdHex && currentChainIdHex.toLowerCase() !== targetChainIdHex.toLowerCase()) {
+  // Validación defensiva: asegurar que ambos valores sean strings antes de comparar
+  const currentChainStr = typeof currentChainIdHex === 'string' ? currentChainIdHex.toLowerCase() : null;
+  const targetChainStr = typeof targetChainIdHex === 'string' ? targetChainIdHex.toLowerCase() : null;
+
+  if (currentChainStr && targetChainStr && currentChainStr !== targetChainStr) {
     try {
       await activeProvider.request({
         method: 'wallet_switchEthereumChain',
@@ -335,9 +339,25 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
   }
 
   // 3. Formateo y Checksum Estricto EIP-55 de Direcciones con Ethers.js
-  const formattedContract = getAddress(USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20);
-  const formattedTreasury = getAddress(targetTreasury);
-  const formattedFrom = getAddress(fromAddress);
+  // Validación defensiva: garantizar que cada dirección sea un string hex EVM válido antes de
+  // pasarlo a getAddress(), que internamente llama .toLowerCase() y puede lanzar TypeError.
+  const rawContract = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
+  const rawTreasury = targetTreasury;
+  const rawFrom = fromAddress;
+
+  if (typeof rawContract !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(rawContract.trim())) {
+    throw new Error('Dirección de contrato USDT inválida o no configurada para esta red.');
+  }
+  if (typeof rawTreasury !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(rawTreasury.trim())) {
+    throw new Error('Dirección de tesorería HOLD3R inválida. Verifica la configuración de la red.');
+  }
+  if (typeof rawFrom !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(rawFrom.trim())) {
+    throw new Error('Dirección de billetera de origen inválida. Reconecta tu wallet y vuelve a intentarlo.');
+  }
+
+  const formattedContract = getAddress(rawContract.trim());
+  const formattedTreasury = getAddress(rawTreasury.trim());
+  const formattedFrom = getAddress(rawFrom.trim());
 
   // 4. Codificación ABI Oficial con Ethers.js (Función transfer(address,uint256))
   const decimals = network === 'BEP20' ? 18 : 6;
