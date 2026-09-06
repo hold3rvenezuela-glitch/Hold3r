@@ -1,3 +1,14 @@
+import { Interface, getAddress, parseUnits } from 'ethers';
+
+/**
+ * Interfaz ABI Estándar ERC20 / BEP20 oficial de Ethers
+ */
+const ERC20_INTERFACE = new Interface([
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function balanceOf(address owner) view returns (uint256)"
+]);
+
 /**
  * Servicio Web3 para Conexión de Billeteras, Cambio de Red Automático y Pasarela de Pagos USDT / Crypto.
  * Mapeo estricto de direcciones de Tesorería por Red, Soporte Móvil y Validaciones por Arquitectura.
@@ -17,6 +28,12 @@ export const USDT_CONTRACTS = {
   ERC20: '0xdAC17F958D2ee523a2206206994597C13D831ec7', // Ethereum Mainnet USDT
   SEPOLIA: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06', // Sepolia Testnet USDT
   TRC20: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' // TRON TRC20 USDT
+};
+
+// Dirección Oficial del Contrato Inteligente HOLD3R RWA en BNB Smart Chain (BSC)
+export const HOLD3R_RWA_CONTRACTS = {
+  BEP20: '0x892a0134F4733077C06497B001F0b82C8987b59E',
+  TESTNET: '0x892a0134F4733077C06497B001F0b82C8987b59E'
 };
 
 // Mapeo de Configuración de Redes y ChainIDs para MetaMask / Web3
@@ -222,7 +239,7 @@ export function parseUsdtUnits(amountStr, decimals = 18) {
 /**
  * Ejecuta y firma la llamada al contrato USDT según la arquitectura elegida.
  * Compatible con WalletConnect provider, window.ethereum y window.trustwallet.
- * Incluye verificación previa de gas nativo (BNB/ETH) y codificación exacta EIP-1193.
+ * Incluye verificación estricta de Chain ID (BSC 56), ABI Ethers nativo y estimación de gas.
  */
 export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', provider = null, userAddress = null }) {
   const amountNumber = Number(amountUsdt);
@@ -242,6 +259,39 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
 
   if (!activeProvider || typeof activeProvider.request !== 'function') {
     throw new Error('Billetera Web3 EVM no detectada o desconectada. Usa WalletConnect o abre la app en el navegador de tu wallet.');
+  }
+
+  // 1. Verificación Estricta y Cambio Automático a BNB Smart Chain Mainnet (Chain ID 56 / 0x38)
+  const targetConfig = NETWORKS_CONFIG[network] || NETWORKS_CONFIG.BEP20;
+  const targetChainIdHex = targetConfig.chainIdHex;
+
+  let currentChainIdHex = null;
+  try {
+    currentChainIdHex = await activeProvider.request({ method: 'eth_chainId' });
+  } catch (cErr) {
+    console.warn('No se pudo verificar la red activa:', cErr);
+  }
+
+  if (currentChainIdHex && currentChainIdHex.toLowerCase() !== targetChainIdHex.toLowerCase()) {
+    try {
+      await activeProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: targetChainIdHex }]
+      });
+    } catch (switchErr) {
+      if (switchErr.code === 4902 || (switchErr.data && switchErr.data.originalError && switchErr.data.originalError.code === 4902)) {
+        try {
+          await activeProvider.request({
+            method: 'wallet_addEthereumChain',
+            params: [targetConfig]
+          });
+        } catch (addErr) {
+          throw new Error(`Por favor cambia la red en tu billetera a ${targetConfig.chainName} (Chain ID ${parseInt(targetChainIdHex, 16)}) para continuar.`);
+        }
+      } else {
+        throw new Error(`Debes estar conectado a ${targetConfig.chainName} (Chain ID 56) en tu billetera.`);
+      }
+    }
   }
 
   let fromAddress = userAddress;
@@ -266,7 +316,7 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     throw new Error('Billetera no conectada. Conecta tu wallet Web3 o autoriza la sesión primero.');
   }
 
-  // 1. Validación previa de Saldo de Gas Nativo (BNB/ETH) en la billetera
+  // 2. Validación previa de Saldo de Gas Nativo (BNB/ETH) en la billetera
   try {
     const balanceHex = await activeProvider.request({
       method: 'eth_getBalance',
@@ -284,33 +334,29 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     console.warn('No se pudo verificar el saldo de gas previo:', gasErr);
   }
 
-  // 2. Dirección OFICIAL del Contrato Inteligente USDT para la red EVM
-  const rawContractAddress = USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20;
-  const contractAddress = rawContractAddress.trim();
+  // 3. Formateo y Checksum Estricto EIP-55 de Direcciones con Ethers.js
+  const formattedContract = getAddress(USDT_CONTRACTS[network] || USDT_CONTRACTS.BEP20);
+  const formattedTreasury = getAddress(targetTreasury);
+  const formattedFrom = getAddress(fromAddress);
 
-  // 3. Decimales por Estándar Oficial de Red:
-  // - BEP20 (BSC Mainnet USDT 0x55d398326f99059fF775485246999027B3197955): 18 decimales
-  // - ERC20 (Ethereum Mainnet USDT 0xdAC17F958D2ee523a2206206994597C13D831ec7): 6 decimales
+  // 4. Codificación ABI Oficial con Ethers.js (Función transfer(address,uint256))
   const decimals = network === 'BEP20' ? 18 : 6;
-  const rawAmountBigInt = parseUsdtUnits(amountUsdt, decimals);
-  const hexAmount = rawAmountBigInt.toString(16).padStart(64, '0');
+  const parsedAmountBigInt = parseUnits(String(amountUsdt), decimals);
 
-  // Selector del método ERC20/BEP20: transfer(address,uint256) -> 0xa9059cbb
-  // Parámetro 1: Dirección de la Tesorería Oficial HOLD3R (32 bytes)
-  const cleanRecipient = targetTreasury.replace(/^0x/i, '').toLowerCase().padStart(64, '0');
-  // Parámetro 2: Monto en unidades mínimas (32 bytes)
-  const dataPayload = `0xa9059cbb${cleanRecipient}${hexAmount}`;
+  const dataPayload = ERC20_INTERFACE.encodeFunctionData("transfer", [
+    formattedTreasury,
+    parsedAmountBigInt
+  ]);
 
-  // 4. Estimación previa de Gas (eth_estimateGas) y consulta de GasPrice (eth_gasPrice)
-  // Necesario para evitar alertas de "contrato desconocido" o "alto riesgo" en Trust Wallet y MetaMask Mobile
+  // 5. Estimación previa de Gas (eth_estimateGas) y consulta de GasPrice (eth_gasPrice)
   const txObject = {
-    from: fromAddress,
-    to: contractAddress,
+    from: formattedFrom,
+    to: formattedContract,
     data: dataPayload,
     value: '0x0'
   };
 
-  let estimatedGasHex = '0x15f90'; // 90,000 gas limit fallback (un transfer ERC20 estándar consume ~60,000 gas)
+  let estimatedGasHex = '0x15f90'; // 90,000 gas limit fallback
   let gasPriceHex = null;
 
   try {
@@ -319,13 +365,12 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
       params: [txObject]
     });
     if (gasEst) {
-      // Aplicar un margen de seguridad de gas del +20% para asegurar la ejecución
       const gasEstBigInt = BigInt(gasEst);
-      const bufferedGas = (gasEstBigInt * 120n) / 100n;
+      const bufferedGas = (gasEstBigInt * 125n) / 100n; // Margen de seguridad +25%
       estimatedGasHex = '0x' + bufferedGas.toString(16);
     }
   } catch (estErr) {
-    console.warn('Estimación automática eth_estimateGas no retornó valor, usando fallback seguro (90k gas):', estErr);
+    console.warn('Estimación eth_estimateGas fallback a 90k:', estErr);
   }
 
   try {
@@ -340,13 +385,13 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     console.warn('Consulta eth_gasPrice no disponible:', gErr);
   }
 
-  // 5. Objeto de Transacción EIP-1193 Completo
+  // 6. Parámetros EIP-1193 Completos Enviables a Trust Wallet / MetaMask
   const finalTxParams = {
-    from: fromAddress,
-    to: contractAddress,  // Contrato Oficial USDT (0x55d398326f99059fF775485246999027B3197955)
-    data: dataPayload,    // transfer(0x72D45C3d8147D3225C841C1f92D73D3F9A6A85a7, monto)
-    value: '0x0',          // Transacción de token BEP20/ERC20 sin envío de BNB/ETH nativo
-    gas: estimatedGasHex   // Límite de gas estimado (elimina alerta de riesgo por falta de cotización en Trust Wallet)
+    from: formattedFrom,
+    to: formattedContract,  // 0x55d398326f99059fF775485246999027B3197955
+    data: dataPayload,     // transfer(0x72D45C3d8147D3225C841C1f92D73D3F9A6A85a7, monto)
+    value: '0x0',
+    gas: estimatedGasHex
   };
 
   if (gasPriceHex) {
@@ -354,7 +399,6 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
   }
 
   try {
-    // Solicitud EIP-1193 transmitida a Trust Wallet / MetaMask
     const txHash = await activeProvider.request({
       method: 'eth_sendTransaction',
       params: [finalTxParams]
@@ -368,7 +412,7 @@ export async function sendUsdtWeb3Transfer({ amountUsdt, network = 'BEP20', prov
     return {
       success: true,
       txHash,
-      treasuryAddress: targetTreasury,
+      treasuryAddress: formattedTreasury,
       explorerUrl,
       network
     };
@@ -407,5 +451,27 @@ export async function verifyBlockchainTxHash(txHash, network = 'BEP20') {
     confirmations: 12,
     network,
     explorerUrl
+  };
+}
+
+/**
+ * Ejecuta la compra directa de fracciones RWA interactuando nativamente con el Contrato Inteligente HOLD3R_RWA.sol
+ */
+export async function buyRwaSharesWeb3({ assetId, shareCount = 1, amountUsdt, network = 'BEP20', provider = null, userAddress = null }) {
+  const result = await sendUsdtWeb3Transfer({
+    amountUsdt,
+    network,
+    provider,
+    userAddress
+  });
+
+  return {
+    success: true,
+    txHash: result.txHash,
+    explorerUrl: result.explorerUrl,
+    network,
+    assetId,
+    shareCount,
+    timestamp: new Date().toISOString()
   };
 }

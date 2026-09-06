@@ -452,7 +452,7 @@ export async function fetchUserShares(userId) {
   return data || [];
 }
 
-export async function investInAsset({ userId, wallet, asset, investmentUsdt }) {
+export async function investInAsset({ userId, wallet, asset, investmentUsdt, signedHash = null }) {
   const amountUsdt = Number(investmentUsdt);
   const totalValuation = Number(asset.total_valuation);
   const currentFunded = Number(asset.funded_amount);
@@ -461,7 +461,7 @@ export async function investInAsset({ userId, wallet, asset, investmentUsdt }) {
     throw new Error('El monto a invertir debe ser mayor a 0 USDT');
   }
 
-  if (Number(wallet.balance) < amountUsdt) {
+  if (Number(wallet?.balance || 0) < amountUsdt && !signedHash) {
     throw new Error('Saldo insuficiente en tu billetera USDT');
   }
 
@@ -478,13 +478,13 @@ export async function investInAsset({ userId, wallet, asset, investmentUsdt }) {
   // Asegurar que asset.id sea un UUID válido
   const validAssetId = (asset.id && asset.id.length === 36) ? asset.id : generateUUID();
 
-  // 1. Insertar compra en public.asset_shares
+  // 1. Insertar compra en public.asset_shares con Hash Blockchain Real si está presente
   const sharePayload = {
     asset_id: validAssetId,
     user_id: validUserId,
     shares_percentage: sharesPercentage,
     amount_invested_usdt: amountUsdt,
-    signed_contract_hash: generateContractHash(validAssetId, validUserId, amountUsdt),
+    signed_contract_hash: signedHash || generateContractHash(validAssetId, validUserId, amountUsdt),
     purchased_at: new Date().toISOString()
   };
 
