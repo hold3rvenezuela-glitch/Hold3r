@@ -171,12 +171,12 @@ export async function getUserWallet(userId) {
     console.error('Error al obtener wallet:', error);
   }
 
-  // Si no tiene wallet por alguna razón, se la creamos automáticamente con balance en 0.00
+  // Si no tiene wallet aún, crear una vacía (sin dirección ficticia)
   if (!data && userId) {
     const newWallet = {
       user_id: userId,
-      usdt_address: generateUsdtAddress('TRC20'),
-      network: 'TRC20',
+      usdt_address: '',
+      network: 'BEP20',
       balance: 0.00,
       updated_at: new Date().toISOString()
     };
@@ -191,12 +191,43 @@ export async function getUserWallet(userId) {
   return data;
 }
 
+/**
+ * Actualiza la dirección de wallet USDT y la red del usuario en public.wallets.
+ */
+export async function updateUserWallet(userId, { usdt_address, network }) {
+  // Buscar wallet del usuario
+  const { data: existing } = await supabase
+    .from(TABLES.WALLETS)
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { data, error } = await supabase
+      .from(TABLES.WALLETS)
+      .update({ usdt_address, network, updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+      .select()
+      .single();
+    if (error) throw new Error(`Error al actualizar wallet: ${error.message}`);
+    return data;
+  } else {
+    // Crear wallet si no existe
+    const { data, error } = await supabase
+      .from(TABLES.WALLETS)
+      .insert({ user_id: userId, usdt_address, network, balance: 0, updated_at: new Date().toISOString() })
+      .select()
+      .single();
+    if (error) throw new Error(`Error al crear wallet: ${error.message}`);
+    return data;
+  }
+}
+
 export async function depositFunds(walletId, currentBalance, amountUsdt) {
   const newBalance = Number(currentBalance) + Number(amountUsdt);
 
-  // Si es wallet demo local sin id en BD, devolvemos wallet actualizada
   if (!walletId) {
-    return { balance: newBalance, usdt_address: generateUsdtAddress('TRC20'), network: 'TRC20' };
+    return { balance: newBalance, usdt_address: '', network: 'BEP20' };
   }
 
   const { data, error } = await supabase
@@ -298,31 +329,32 @@ export async function fetchUserWalletMovements(userId) {
 
     const formattedDeposits = (depositsData || []).map(d => ({
       id: d.id,
-      type: 'income',
+      type: 'deposit',
       label: `Depósito USDT (${d.network || 'TRC20'})`,
       amount: Number(d.amount_usdt || 0),
-      timestamp: d.created_at || d.verified_at,
-      txHash: d.tx_hash,
+      created_at: d.created_at || d.verified_at,
+      tx_hash: d.tx_hash || null,
       network: d.network || 'BEP20',
-      status: d.status || 'confirmed'
+      status: d.status || 'confirmed',
+      description: `Depósito via ${d.network || 'BEP20'}`
     }));
 
     const formattedShares = (sharesData || []).map(s => ({
       id: s.id,
-      type: 'expense',
+      type: 'purchase',
       label: s.asset?.title ? `Compra Fracción RWA: ${s.asset.title}` : 'Compra Fracción RWA',
       amount: Number(s.amount_invested_usdt || 0),
-      timestamp: s.purchased_at,
-      txHash: s.signed_contract_hash,
+      created_at: s.purchased_at,
+      tx_hash: s.signed_contract_hash || null,
       network: 'BEP20',
       status: 'confirmed',
-      assetCategory: s.asset?.category
+      description: s.asset?.title ? `Participación en ${s.asset.title}` : 'Compra de participación RWA'
     }));
 
     const combined = [...formattedDeposits, ...formattedShares];
 
     // Ordenar por fecha descendente
-    combined.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    combined.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     return combined;
   } catch (err) {
@@ -1228,9 +1260,15 @@ export async function seedDemoAssetsIfEmpty() {
  * Solo se actualizan los campos que se pasen (full_name, document_id, avatar_url, etc.)
  */
 export async function updateUserProfile(userId, fields) {
+  // Only update columns that exist in public.profiles schema
+  const allowed = ['full_name', 'document_id', 'avatar_url'];
+  const safeFields = Object.fromEntries(
+    Object.entries(fields).filter(([k]) => allowed.includes(k))
+  );
+
   const { data, error } = await supabase
     .from('profiles')
-    .update({ ...fields, updated_at: new Date().toISOString() })
+    .update(safeFields)
     .eq('id', userId)
     .select()
     .single();

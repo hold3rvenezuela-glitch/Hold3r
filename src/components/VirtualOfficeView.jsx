@@ -11,6 +11,7 @@ import {
   fetchWalletTransactions,
   uploadUserAvatar,
   updateUserProfile,
+  updateUserWallet,
   getUserWallet,
 } from '../services/api';
 import GovernanceView from './GovernanceView';
@@ -111,13 +112,32 @@ function InvestmentsTab({ userId, initialShares }) {
   );
 }
 
+// ─── Network labels ───────────────────────────────────────────────────────────
+const NETWORK_OPTIONS = [
+  { value: 'BEP20', label: 'BEP20 · BNB Chain', desc: 'Dirección 0x... (EVM)' },
+  { value: 'ERC20', label: 'ERC20 · Ethereum',  desc: 'Dirección 0x... (EVM)' },
+  { value: 'TRC20', label: 'TRC20 · Tron',      desc: 'Dirección T... (Tron)' },
+  { value: 'SOLANA', label: 'SOL · Solana',     desc: 'Dirección Base58 (Solana)' },
+];
+
 // ─── Tab: Wallet & Saldo ─────────────────────────────────────────────────────
-function WalletTab({ userId, wallet, onOpenDeposit }) {
+function WalletTab({ userId, wallet, onOpenDeposit, refreshTrigger }) {
   const [walletData, setWalletData] = useState(wallet);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     getUserWallet(userId).then(w => w && setWalletData(w));
-  }, [userId]);
+  }, [userId, refreshTrigger]);
+
+  const networkLabel = NETWORK_OPTIONS.find(n => n.value === walletData?.network)?.label || walletData?.network || '—';
+
+  const copyAddress = () => {
+    if (walletData?.usdt_address) {
+      navigator.clipboard.writeText(walletData.usdt_address).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -141,19 +161,39 @@ function WalletTab({ userId, wallet, onOpenDeposit }) {
         </button>
       </div>
 
-      {/* Wallet details */}
-      {walletData && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800">
-            <p className="text-[10px] text-neutral-500 uppercase font-mono mb-1">Dirección USDT</p>
-            <p className="text-xs font-mono text-emerald-400 break-all">{walletData.usdt_address || 'No configurada'}</p>
+      {/* Wallet address card */}
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
+          <div>
+            <p className="text-xs font-bold text-white">Dirección de Recepción USDT</p>
+            <p className="text-[10px] text-neutral-500 font-mono mt-0.5">{networkLabel}</p>
           </div>
-          <div className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800">
-            <p className="text-[10px] text-neutral-500 uppercase font-mono mb-1">Red</p>
-            <p className="text-sm font-bold text-white">{walletData.network || '—'}</p>
-          </div>
+          <span
+            className="px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono"
+            style={{ background: 'rgba(0,255,136,0.08)', color: '#00FF88', border: '1px solid rgba(0,255,136,0.2)' }}
+          >
+            {walletData?.network || 'BEP20'}
+          </span>
         </div>
-      )}
+        <div className="px-4 py-3">
+          {walletData?.usdt_address ? (
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-mono text-emerald-400 break-all flex-1">{walletData.usdt_address}</p>
+              <button
+                onClick={copyAddress}
+                className="shrink-0 p-1.5 rounded-lg transition-colors hover:bg-neutral-800"
+                title="Copiar dirección"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-neutral-400" />}
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-neutral-500 italic">
+              Sin dirección registrada — ve a <strong className="text-neutral-300">Editar Perfil</strong> para configurarla.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -294,23 +334,46 @@ function HistoryTab({ userId }) {
 }
 
 // ─── Tab: Editar Perfil ───────────────────────────────────────────────────────
-function ProfileTab({ userProfile, onProfileUpdated }) {
+function ProfileTab({ userProfile, wallet, onProfileUpdated, onWalletUpdated }) {
   const [form, setForm] = useState({
     full_name: userProfile?.full_name || '',
     document_id: userProfile?.document_id || '',
+  });
+  const [walletForm, setWalletForm] = useState({
+    usdt_address: wallet?.usdt_address || '',
+    network: wallet?.network || 'BEP20',
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
+  // Sync wallet form if wallet prop changes externally
+  useEffect(() => {
+    setWalletForm({
+      usdt_address: wallet?.usdt_address || '',
+      network: wallet?.network || 'BEP20',
+    });
+  }, [wallet?.id]);
+
   const handleSave = async () => {
     if (!form.full_name.trim()) { setError('El nombre completo es requerido.'); return; }
     setSaving(true); setError(''); setSuccess(false);
     try {
+      // 1. Actualizar perfil (nombre, cédula)
       const updated = await updateUserProfile(userProfile.id, form);
       onProfileUpdated(updated);
+
+      // 2. Actualizar dirección de wallet si se proporcionó
+      if (walletForm.usdt_address.trim()) {
+        const updatedWallet = await updateUserWallet(userProfile.id, {
+          usdt_address: walletForm.usdt_address.trim(),
+          network: walletForm.network,
+        });
+        onWalletUpdated?.(updatedWallet);
+      }
+
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      setTimeout(() => setSuccess(false), 3500);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -318,33 +381,95 @@ function ProfileTab({ userProfile, onProfileUpdated }) {
     }
   };
 
+  const inputCls = "w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-emerald-500/60 transition-colors font-mono";
+  const labelCls = "block text-[11px] text-neutral-400 uppercase font-mono font-bold mb-1.5";
+
   return (
     <div className="max-w-lg space-y-5">
-      <div className="space-y-4">
-        <div>
-          <label className="block text-[11px] text-neutral-400 uppercase font-mono font-bold mb-1.5">
-            Nombre Completo
-          </label>
-          <input
-            value={form.full_name}
-            onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))}
-            className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-emerald-500/60 transition-colors font-mono"
-            placeholder="Nombre Apellido"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] text-neutral-400 uppercase font-mono font-bold mb-1.5">
-            Cédula / RIF
-          </label>
-          <input
-            value={form.document_id}
-            onChange={e => setForm(p => ({ ...p, document_id: e.target.value }))}
-            className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-emerald-500/60 transition-colors font-mono"
-            placeholder="V-12345678 / J-123456789"
-          />
+
+      {/* ── Sección Datos Personales ── */}
+      <div className="space-y-1">
+        <p className="text-[11px] text-emerald-400 uppercase font-mono font-bold tracking-wider mb-3">Datos Personales</p>
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Nombre Completo</label>
+            <input
+              value={form.full_name}
+              onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))}
+              className={inputCls}
+              placeholder="Nombre Apellido"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Cédula / RIF</label>
+            <input
+              value={form.document_id}
+              onChange={e => setForm(p => ({ ...p, document_id: e.target.value }))}
+              className={inputCls}
+              placeholder="V-12345678 / J-123456789"
+            />
+          </div>
         </div>
       </div>
 
+      {/* ── Sección Dirección de Wallet ── */}
+      <div className="pt-4 border-t border-neutral-800 space-y-3">
+        <div>
+          <p className="text-[11px] text-emerald-400 uppercase font-mono font-bold tracking-wider mb-0.5">Dirección de Wallet</p>
+          <p className="text-[11px] text-neutral-500 mb-3">Dirección personal donde recibirás rendimientos (ej. Trust Wallet, MetaMask).</p>
+        </div>
+
+        {/* Network selector */}
+        <div>
+          <label className={labelCls}>Red / Protocolo</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {NETWORK_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setWalletForm(p => ({ ...p, network: value }))}
+                className={`py-2 px-2 text-[11px] font-bold rounded-xl border transition-all text-center ${
+                  walletForm.network === value
+                    ? 'bg-emerald-500/15 border-emerald-500/60 text-emerald-300'
+                    : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-600 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Address input */}
+        <div>
+          <label className={labelCls}>
+            Dirección {walletForm.network} (USDT)
+          </label>
+          <input
+            value={walletForm.usdt_address}
+            onChange={e => setWalletForm(p => ({ ...p, usdt_address: e.target.value }))}
+            className={inputCls}
+            placeholder={
+              walletForm.network === 'TRC20' ? 'T... (Dirección Tron)'
+              : walletForm.network === 'SOLANA' ? 'Base58... (Dirección Solana)'
+              : '0x... (Dirección EVM)'
+            }
+            spellCheck={false}
+            autoComplete="off"
+          />
+          {walletForm.network === 'SOLANA' && (
+            <p className="text-[10px] text-neutral-500 mt-1 font-mono">Ejemplo: 5Kx2L9MnPqR... (dirección Phantom / Solflare)</p>
+          )}
+          {(walletForm.network === 'BEP20' || walletForm.network === 'ERC20') && (
+            <p className="text-[10px] text-neutral-500 mt-1 font-mono">Ejemplo: 0xfb3B52... (Trust Wallet / MetaMask)</p>
+          )}
+          {walletForm.network === 'TRC20' && (
+            <p className="text-[10px] text-neutral-500 mt-1 font-mono">Ejemplo: TYy2Hj... (TronLink / Exodus)</p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Feedback ── */}
       {error && (
         <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/25 text-xs text-red-400">
           <AlertCircle className="w-4 h-4 shrink-0" /> {error}
@@ -352,7 +477,7 @@ function ProfileTab({ userProfile, onProfileUpdated }) {
       )}
       {success && (
         <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-400">
-          <CheckCircle2 className="w-4 h-4 shrink-0" /> Perfil actualizado correctamente.
+          <CheckCircle2 className="w-4 h-4 shrink-0" /> Perfil y wallet actualizados correctamente.
         </div>
       )}
 
@@ -366,7 +491,7 @@ function ProfileTab({ userProfile, onProfileUpdated }) {
         {saving ? 'Guardando...' : 'Guardar Cambios'}
       </button>
 
-      {/* Datos de solo lectura */}
+      {/* ── Datos de solo lectura ── */}
       <div className="pt-4 border-t border-neutral-800 space-y-2">
         <p className="text-[11px] text-neutral-600 uppercase font-mono font-bold mb-2">Datos de Sistema (solo lectura)</p>
         <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
@@ -405,6 +530,9 @@ export default function VirtualOfficeView({
   const [activeTab, setActiveTab] = useState('investments');
   const [avatarUrl, setAvatarUrl] = useState(userProfile?.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  // Local wallet state so WalletTab refreshes after ProfileTab saves
+  const [localWallet, setLocalWallet] = useState(wallet);
+  const [walletRefreshTick, setWalletRefreshTick] = useState(0);
   const fileInputRef = useRef(null);
 
   const handleAvatarChange = async (e) => {
@@ -420,6 +548,11 @@ export default function VirtualOfficeView({
     } finally {
       setUploadingAvatar(false);
     }
+  };
+
+  const handleWalletUpdated = (updatedWallet) => {
+    setLocalWallet(updatedWallet);
+    setWalletRefreshTick(t => t + 1);
   };
 
   return (
@@ -539,13 +672,23 @@ export default function VirtualOfficeView({
           <GovernanceView userProfile={userProfile} assets={assets} />
         )}
         {activeTab === 'wallet' && (
-          <WalletTab userId={userProfile.id} wallet={wallet} onOpenDeposit={onOpenDeposit} />
+          <WalletTab
+            userId={userProfile.id}
+            wallet={localWallet}
+            onOpenDeposit={onOpenDeposit}
+            refreshTrigger={walletRefreshTick}
+          />
         )}
         {activeTab === 'history' && (
           <HistoryTab userId={userProfile.id} />
         )}
         {activeTab === 'profile' && (
-          <ProfileTab userProfile={userProfile} onProfileUpdated={onProfileUpdated} />
+          <ProfileTab
+            userProfile={userProfile}
+            wallet={localWallet}
+            onProfileUpdated={onProfileUpdated}
+            onWalletUpdated={handleWalletUpdated}
+          />
         )}
       </div>
     </div>
