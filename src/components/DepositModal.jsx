@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Wallet, RefreshCw, Check, Copy, ExternalLink, HelpCircle, 
-  Info, AlertTriangle, ShieldCheck, ArrowRight, Globe, Smartphone
+  Info, AlertTriangle, ShieldCheck, ArrowRight, Globe, Smartphone,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useWeb3ModalAccount, useWeb3Modal, useWeb3ModalProvider } from '@web3modal/ethers/react';
 import { 
@@ -29,6 +30,8 @@ export default function DepositModal({
   const [selectedNetwork, setSelectedNetwork] = useState('BEP20');
   const [inputTxHash, setInputTxHash] = useState('');
   const [verifyingTx, setVerifyingTx] = useState(false);
+  const [showNetworkAccordion, setShowNetworkAccordion] = useState(false);
+  const [showGuideAccordion, setShowGuideAccordion] = useState(false);
   // Estados granulares de confirmación:
   // 'idle' | 'signing' | 'confirming' | 'credited'
   const [txConfirmingStatus, setTxConfirmingStatus] = useState('idle');
@@ -306,33 +309,47 @@ export default function DepositModal({
           })}
         </div>
 
-        {/* Network Selector Tabs */}
+        {/* Collapsible Network Selector Accordion */}
         <div className="mb-4">
-          <label className="block text-xs font-semibold text-neutral-300 mb-2">
-            Red Blockchain de Depósito:
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {NETWORKS.map(({ id, label, type }) => {
-              const isSelected = selectedNetwork === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setSelectedNetwork(id)}
-                  className={`py-2.5 px-2 text-xs font-bold rounded-xl border transition-all flex flex-col items-center justify-center gap-0.5 ${
-                    isSelected
-                      ? 'bg-emerald-500/15 border-emerald-500/60 text-emerald-300 shadow-lg scale-[1.02]'
-                      : 'bg-neutral-900/90 border-white/10 text-neutral-400 hover:border-white/20 hover:text-white'
-                  }`}
-                >
-                  <span>{label}</span>
-                  <span className="text-[9px] font-mono opacity-70">
-                    {type === 'EVM' ? 'Web3 / EVM' : type === 'TRON' ? 'Native Tron' : 'Native SOL'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowNetworkAccordion(!showNetworkAccordion)}
+            className="w-full flex items-center justify-between p-3 rounded-2xl bg-neutral-900 border border-emerald-500/30 text-xs font-bold text-white transition-all hover:border-emerald-500/60"
+          >
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Red Activa: <strong className="text-emerald-300 font-mono">{currentNetworkConfig.label}</strong></span>
+            </div>
+            <div className="flex items-center gap-1.5 text-neutral-400 text-[11px]">
+              <span>{showNetworkAccordion ? 'Cerrar' : 'Cambiar Red'}</span>
+              {showNetworkAccordion ? <ChevronUp className="w-4 h-4 text-emerald-400" /> : <ChevronDown className="w-4 h-4 text-emerald-400" />}
+            </div>
+          </button>
+
+          {showNetworkAccordion && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2.5 p-2.5 rounded-2xl bg-neutral-950 border border-neutral-800 animate-fade-in">
+              {NETWORKS.map(({ id, label, type }) => {
+                const isSelected = selectedNetwork === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => { setSelectedNetwork(id); setShowNetworkAccordion(false); }}
+                    className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all flex flex-col items-center justify-center gap-0.5 ${
+                      isSelected
+                        ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-md scale-[1.02]'
+                        : 'bg-neutral-900 border-white/10 text-neutral-400 hover:border-white/20 hover:text-white'
+                    }`}
+                  >
+                    <span className="truncate max-w-full">{label}</span>
+                    <span className="text-[9px] font-mono opacity-70">
+                      {type === 'EVM' ? 'Web3 / EVM' : type === 'TRON' ? 'Native Tron' : 'Native SOL'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Network Mismatch Warning Banner (EVM) */}
@@ -580,13 +597,25 @@ export default function DepositModal({
             </div>
           </div>
 
-          {/* Educational Quick Guide */}
-          <div className="p-3 rounded-xl bg-neutral-900/60 border border-white/10 text-[11px] space-y-1 text-neutral-400">
-            <div className="flex items-center gap-1.5 font-bold text-emerald-400 mb-1">
-              <HelpCircle className="w-3.5 h-3.5" /> Guía de Red {selectedNetwork}
-            </div>
-            <p>• <strong className="text-white">Formato Tesorería:</strong> {currentTreasury}</p>
-            <p>• <strong className="text-white">Confirmación:</strong> El crédito se activa automáticamente tras verificar las confirmaciones de bloque en la red {selectedNetwork}.</p>
+          {/* Educational Quick Guide Accordion */}
+          <div className="rounded-xl bg-neutral-900/60 border border-white/10 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowGuideAccordion(!showGuideAccordion)}
+              className="w-full flex items-center justify-between p-3 text-[11px] font-bold text-neutral-400 hover:text-white transition-colors"
+            >
+              <span className="flex items-center gap-1.5 text-emerald-400">
+                <HelpCircle className="w-3.5 h-3.5" /> Guía e información de red ({selectedNetwork})
+              </span>
+              {showGuideAccordion ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {showGuideAccordion && (
+              <div className="px-3 pb-3 pt-1 text-[11px] space-y-1 text-neutral-400 border-t border-white/5 bg-black/30 animate-fade-in">
+                <p>• <strong className="text-white">Tesorería Oficial:</strong> <span className="font-mono text-emerald-300">{currentTreasury}</span></p>
+                <p>• <strong className="text-white">Confirmación:</strong> El crédito se verifica automáticamente tras confirmar el bloque en la red {selectedNetwork}.</p>
+              </div>
+            )}
           </div>
 
           {/* Buttons */}
