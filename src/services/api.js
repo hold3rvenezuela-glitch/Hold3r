@@ -263,6 +263,74 @@ export async function verifyAndCreditDeposit({ userId, txHash, network, amountUs
   return rpcData;
 }
 
+/**
+ * Historial transparente de movimientos de la billetera (Ingresos y Egresos).
+ * Combina la tabla `deposits` (Ingresos) y la tabla `asset_shares` (Egresos).
+ */
+export async function fetchUserWalletMovements(userId) {
+  if (!userId) return [];
+
+  try {
+    // 1. Consultar depósitos de la cuenta (Ingresos)
+    const { data: depositsData, error: depositsErr } = await supabase
+      .from('deposits')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (depositsErr) {
+      console.warn('Aviso al consultar depósitos en Supabase:', depositsErr.message);
+    }
+
+    // 2. Consultar compras / inversiones en RWA (Egresos)
+    const { data: sharesData, error: sharesErr } = await supabase
+      .from(TABLES.ASSET_SHARES)
+      .select(`
+        *,
+        asset:assets(*)
+      `)
+      .eq('user_id', userId)
+      .order('purchased_at', { ascending: false });
+
+    if (sharesErr) {
+      console.warn('Aviso al consultar compras en Supabase:', sharesErr.message);
+    }
+
+    const formattedDeposits = (depositsData || []).map(d => ({
+      id: d.id,
+      type: 'income',
+      label: `Depósito USDT (${d.network || 'TRC20'})`,
+      amount: Number(d.amount_usdt || 0),
+      timestamp: d.created_at || d.verified_at,
+      txHash: d.tx_hash,
+      network: d.network || 'BEP20',
+      status: d.status || 'confirmed'
+    }));
+
+    const formattedShares = (sharesData || []).map(s => ({
+      id: s.id,
+      type: 'expense',
+      label: s.asset?.title ? `Compra Fracción RWA: ${s.asset.title}` : 'Compra Fracción RWA',
+      amount: Number(s.amount_invested_usdt || 0),
+      timestamp: s.purchased_at,
+      txHash: s.signed_contract_hash,
+      network: 'BEP20',
+      status: 'confirmed',
+      assetCategory: s.asset?.category
+    }));
+
+    const combined = [...formattedDeposits, ...formattedShares];
+
+    // Ordenar por fecha descendente
+    combined.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    return combined;
+  } catch (err) {
+    console.error('Error al procesar el historial de movimientos de wallet:', err);
+    return [];
+  }
+}
+
 // ----------------------------------------------------
 // KYC VERIFICATION & PUBLIC EXPLORER
 // ----------------------------------------------------
@@ -1148,5 +1216,88 @@ export async function seedDemoAssetsIfEmpty() {
       ...item,
       created_at: new Date().toISOString()
     }));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OFICINA VIRTUAL — Funciones de perfil, avatar e historial
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Actualiza campos editables del perfil del usuario en public.profiles.
+ * Solo se actualizan los campos que se pasen (full_name, document_id, avatar_url, etc.)
+ */
+export async function updateUserProfile(userId, fields) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error al actualizar perfil: ${error.message}`);
+  return data;
+}
+
+/**
+ * Sube una foto de perfil al bucket 'avatars' de Supabase Storage
+ * y actualiza avatar_url en public.profiles.
+ * Retorna la URL pública del avatar.
+ */
+export async function uploadUserAvatar(userId, file) {
+  const ext = file.name.split('.').pop();
+  const path = `${userId}/avatar.${ext}`;
+
+  // Subir / sobreescribir en bucket 'avatars'
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(path, file, { upsert: true, contentType: file.type });
+
+  if (uploadError) throw new Error(`Error al subir avatar: ${uploadError.message}`);
+
+  // Obtener URL pública
+  const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+  const publicUrl = urlData?.publicUrl;
+
+  // Persistir URL en profiles
+  await updateUserProfile(userId, { avatar_url: publicUrl });
+
+  return publicUrl;
+}
+
+/**
+ * Obtiene el historial completo de transacciones de la wallet del usuario.
+ * Combina depósitos (ingresos) y compras de shares (egresos) ordenados por fecha desc.
+ */
+export async function fetchWalletTransactions(userId) {
+  try {
+    // Intentar primero desde wallet_transactions (tabla enriquecida)
+    const { data: txData, error: txError } = await supabase
+      .from('wallet_transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (!txError && txData && txData.length > 0) {
+      return txData.map(t => ({
+        id: t.id,
+        type: t.type,
+        label: t.type === 'deposit' ? 'Depósito USDT'
+             : t.type === 'purchase' ? 'Compra de Participación'
+             : t.type === 'yield' ? 'Rendimiento Recibido'
+             : 'Retiro',
+        amount: Number(t.amount),
+        tx_hash: t.tx_hash || null,
+        status: t.status,
+        description: t.description || '',
+        created_at: t.created_at,
+      }));
+    }
+
+    // Fallback: construir historial desde deposits + asset_shares
+    return await fetchUserWalletMovements(userId);
+  } catch (err) {
+    console.error('Error al obtener historial de transacciones:', err.message);
+    return [];
   }
 }

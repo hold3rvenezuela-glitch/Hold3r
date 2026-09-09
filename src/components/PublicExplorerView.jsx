@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ShieldCheck, UserCheck, ExternalLink, Lock, CheckCircle, Award, PieChart, Layers, Building2 } from 'lucide-react';
+import { Search, ShieldCheck, UserCheck, ExternalLink, Lock, CheckCircle, Award, PieChart, Layers, Building2, Copy, Check } from 'lucide-react';
 import { searchPublicContractHash, searchPublicUserPortfolio } from '../services/api';
 
 export default function PublicExplorerView() {
@@ -9,6 +9,7 @@ export default function PublicExplorerView() {
   const [hashResult, setHashResult] = useState(null);
   const [portfolioResult, setPortfolioResult] = useState(null);
   const [searched, setSearched] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
 
   const handleSearch = async (e) => {
     if (e) e.preventDefault();
@@ -195,9 +196,30 @@ export default function PublicExplorerView() {
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 flex items-center justify-between text-xs font-mono text-neutral-400">
-                  <span className="truncate">Hash Hash: <strong className="text-neutral-200">{hashResult.txHash}</strong></span>
-                  <span className="shrink-0">{new Date(hashResult.purchasedAt).toLocaleDateString()}</span>
+                <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-mono text-neutral-300">
+                  <div className="flex-1 min-w-0 w-full">
+                    <span className="text-[10px] text-neutral-400 uppercase font-mono block mb-1">Signed Contract Hash (TxID)</span>
+                    <p className="text-emerald-400 font-bold break-all text-xs tracking-wide bg-neutral-950 p-2.5 rounded-lg border border-emerald-500/20 select-all">
+                      {hashResult.txHash}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (hashResult?.txHash) {
+                          navigator.clipboard.writeText(hashResult.txHash);
+                          setCopiedHash(true);
+                          setTimeout(() => setCopiedHash(false), 2000);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5"
+                    >
+                      {copiedHash ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedHash ? '¡Copiado!' : 'Copiar Hash'}</span>
+                    </button>
+                    <span className="text-neutral-400 text-[11px] font-mono">{new Date(hashResult.purchasedAt).toLocaleDateString()}</span>
+                  </div>
                 </div>
               </div>
             ) : (

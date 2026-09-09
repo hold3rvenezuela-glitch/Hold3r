@@ -22,6 +22,7 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const [kycList, setKycList] = useState([]);
   const [loadingKyc, setLoadingKyc] = useState(false);
   const [selectedKycPhoto, setSelectedKycPhoto] = useState(null);
+  const [expandedKycId, setExpandedKycId] = useState(null);
 
   useEffect(() => {
     if (activeTab === 'purchases') {
@@ -1472,126 +1473,169 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
               <p className="mt-1">Las nuevas verificaciones enviadas por usuarios aparecerán aquí para tu revisión.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6">
+            <div className="grid grid-cols-1 gap-3">
               {kycList.map(item => {
                 const isPending = item.status === 'pending';
                 const isApproved = item.status === 'approved';
                 const isRejected = item.status === 'rejected';
+                const isExpanded = expandedKycId === item.id;
 
                 return (
                   <div
                     key={item.id}
-                    className="p-5 rounded-2xl space-y-4 transition-all"
+                    className="rounded-2xl overflow-hidden transition-all duration-300"
                     style={{ 
                       background: '#111715', 
-                      border: isPending ? '1px solid rgba(234,179,8,0.4)' : isApproved ? '1px solid rgba(0,255,136,0.3)' : '1px solid rgba(239,68,68,0.3)' 
+                      border: isPending ? '1px solid rgba(234,179,8,0.35)' : isApproved ? '1px solid rgba(0,255,136,0.28)' : '1px solid rgba(239,68,68,0.28)' 
                     }}
                   >
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-neutral-800 pb-3 gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-base font-extrabold text-white">{item.full_name}</h4>
-                          <span className="text-xs font-mono text-emerald-400 font-bold">
-                            @{item.profile?.nickname || 'apodo_no_definido'}
-                          </span>
+                    {/* ── RESUMEN COMPACTO (siempre visible) ── */}
+                    <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      {/* Info principal */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center font-black text-lg ${
+                          isPending ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
+                          : isApproved ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                          : 'bg-red-500/15 border border-red-500/30 text-red-400'
+                        }`}>
+                          {item.full_name?.charAt(0)?.toUpperCase() || 'U'}
                         </div>
-                        <p className="text-xs text-neutral-400 font-mono mt-0.5">
-                          Cédula: <strong>{item.document_id}</strong> · Nacimiento: <strong>{item.birth_date}</strong>
-                        </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-extrabold text-white truncate">{item.full_name}</h4>
+                            <span className="text-xs font-mono text-emerald-400 font-bold shrink-0">
+                              @{item.profile?.nickname || 'usuario'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-neutral-400 font-mono mt-0.5">
+                            Cédula/RIF: <strong className="text-neutral-200">{item.document_id}</strong>
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase ${
+                      {/* Badge + Botones de acción */}
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-mono font-bold uppercase ${
                           isPending ? 'bg-amber-950 text-amber-400 border border-amber-800' :
                           isApproved ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
                           'bg-red-950 text-red-400 border border-red-800'
                         }`}>
-                          {isPending ? '● Pendiente Revisión' : isApproved ? '✓ KYC Aprobado' : '✕ KYC Rechazado'}
+                          {isPending ? '● Pendiente' : isApproved ? '✓ Aprobado' : '✕ Rechazado'}
                         </span>
 
                         {isPending && (
-                          <div className="flex items-center gap-2">
+                          <>
                             <button
-                              onClick={() => handleReviewKyc(item.id, item.user_id, 'approved')}
-                              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg transition-all"
+                              onClick={(e) => { e.stopPropagation(); handleReviewKyc(item.id, item.user_id, 'approved'); }}
+                              className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-bold rounded-lg transition-all"
                             >
-                              ✓ Aprobar KYC
+                              ✓ Aprobar
                             </button>
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 const reason = prompt('Indica el motivo de rechazar esta solicitud KYC:');
                                 if (reason) handleReviewKyc(item.id, item.user_id, 'rejected', reason);
                               }}
-                              className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 text-xs font-bold rounded-lg transition-all"
+                              className="px-2.5 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 text-[11px] font-bold rounded-lg transition-all"
                             >
                               ✕ Rechazar
                             </button>
-                          </div>
+                          </>
                         )}
+
+                        {/* Botón de expansión */}
+                        <button
+                          onClick={() => setExpandedKycId(isExpanded ? null : item.id)}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all border ${
+                            isExpanded
+                              ? 'bg-neutral-700 text-white border-neutral-600'
+                              : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white'
+                          }`}
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          {isExpanded ? 'Cerrar Expediente' : 'Ver Expediente / Documentos'}
+                          <span className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+                        </button>
                       </div>
                     </div>
 
-                    {/* Detalles de Ubicación y Wallet BEP20 */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono bg-neutral-950/60 p-3 rounded-xl border border-neutral-800">
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase">Dirección de Vivienda:</span>
-                        <strong className="text-neutral-200">{item.address_street ? `${item.address_street}, ` : ''}{item.address_city}, Estado {item.address_state}, {item.address_country}</strong>
-                      </div>
-                      <div>
-                        <span className="text-neutral-400 block text-[10px] uppercase">Wallet BEP20 para Ganancias:</span>
-                        <strong className="text-emerald-400 break-all">{item.bep20_wallet}</strong>
-                      </div>
-                    </div>
-
-                    {/* Galería de Documentos y Selfie */}
-                    <div>
-                      <span className="text-[10px] text-neutral-400 uppercase font-mono block mb-2 font-bold">
-                        Documentos Cargados y Foto Selfie en Vivo:
-                      </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {/* Cédula */}
-                        <div className="space-y-1">
-                          <span className="text-[10px] text-neutral-400 font-mono">1. Foto de Cédula</span>
-                          <div 
-                            onClick={() => setSelectedKycPhoto(item.id_document_url)}
-                            className="h-32 rounded-xl overflow-hidden border border-neutral-700 bg-black cursor-pointer group relative"
-                          >
-                            <img src={item.id_document_url} alt="Cédula" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
-                              Ampliar Foto
+                    {/* ── DETALLES EXPANDIDOS (acordeón) ── */}
+                    {isExpanded && (
+                      <div className="border-t border-neutral-800 p-4 space-y-4 animate-fade-in">
+                        {/* Dirección y Wallet BEP20 */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono bg-neutral-950/60 p-3 rounded-xl border border-neutral-800">
+                          <div>
+                            <span className="text-neutral-400 block text-[10px] uppercase mb-1">Dirección de Vivienda:</span>
+                            <strong className="text-neutral-200 text-[11px]">{item.address_street ? `${item.address_street}, ` : ''}{item.address_city}, Estado {item.address_state}, {item.address_country}</strong>
+                          </div>
+                          <div>
+                            <span className="text-neutral-400 block text-[10px] uppercase mb-1">Wallet BEP20 para Ganancias:</span>
+                            <strong className="text-emerald-400 break-all text-[11px]">{item.bep20_wallet}</strong>
+                          </div>
+                          {item.birth_date && (
+                            <div>
+                              <span className="text-neutral-400 block text-[10px] uppercase mb-1">Fecha de Nacimiento:</span>
+                              <strong className="text-neutral-200">{item.birth_date}</strong>
                             </div>
+                          )}
+                          <div>
+                            <span className="text-neutral-400 block text-[10px] uppercase mb-1">Fecha de Solicitud:</span>
+                            <strong className="text-neutral-200">{item.created_at ? new Date(item.created_at).toLocaleString('es-VE') : 'N/A'}</strong>
                           </div>
                         </div>
 
-                        {/* RIF */}
-                        <div className="space-y-1">
-                          <span className="text-[10px] text-neutral-400 font-mono">2. Foto de RIF</span>
-                          <div 
-                            onClick={() => setSelectedKycPhoto(item.rif_document_url)}
-                            className="h-32 rounded-xl overflow-hidden border border-neutral-700 bg-black cursor-pointer group relative"
-                          >
-                            <img src={item.rif_document_url} alt="RIF" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
-                              Ampliar Foto
+                        {/* Galería de Documentos y Selfie */}
+                        <div>
+                          <span className="text-[10px] text-neutral-400 uppercase font-mono block mb-2 font-bold">
+                            Documentos Cargados y Foto Selfie en Vivo:
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* Cédula */}
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-neutral-400 font-mono">1. Foto de Cédula</span>
+                              <div 
+                                onClick={() => setSelectedKycPhoto(item.id_document_url)}
+                                className="h-36 rounded-xl overflow-hidden border border-neutral-700 bg-black cursor-pointer group relative"
+                              >
+                                <img src={item.id_document_url} alt="Cédula" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
+                                  Ampliar Foto
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
 
-                        {/* Selfie Cámara */}
-                        <div className="space-y-1">
-                          <span className="text-[10px] text-emerald-400 font-mono font-bold">3. Selfie en Vivo (Cámara)</span>
-                          <div 
-                            onClick={() => setSelectedKycPhoto(item.selfie_url)}
-                            className="h-32 rounded-xl overflow-hidden border border-emerald-500/50 bg-black cursor-pointer group relative"
-                          >
-                            <img src={item.selfie_url} alt="Selfie" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
-                              Ampliar Foto
+                            {/* RIF */}
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-neutral-400 font-mono">2. Foto de RIF</span>
+                              <div 
+                                onClick={() => setSelectedKycPhoto(item.rif_document_url)}
+                                className="h-36 rounded-xl overflow-hidden border border-neutral-700 bg-black cursor-pointer group relative"
+                              >
+                                <img src={item.rif_document_url} alt="RIF" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
+                                  Ampliar Foto
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Selfie Cámara */}
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-emerald-400 font-mono font-bold">3. Selfie en Vivo (Cámara)</span>
+                              <div 
+                                onClick={() => setSelectedKycPhoto(item.selfie_url)}
+                                className="h-36 rounded-xl overflow-hidden border border-emerald-500/50 bg-black cursor-pointer group relative"
+                              >
+                                <img src={item.selfie_url} alt="Selfie" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
+                                  Ampliar Foto
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}

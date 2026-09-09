@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Shield, Wallet, PlusCircle, User, LogOut, Layers, Vote, 
-  Building2, Globe, ExternalLink, Check, RefreshCw, Menu, X, Sparkles, ShieldCheck, UserCheck
+  Building2, Globe, ExternalLink, Check, RefreshCw, Menu, X, Sparkles, ShieldCheck, UserCheck, Briefcase
 } from 'lucide-react';
 import { useWeb3ModalAccount } from '@web3modal/ethers/react';
 import Web3WalletModal from './Web3WalletModal';
@@ -223,6 +223,18 @@ export default function Navbar({
                             </button>
                           </div>
 
+                          {/* Oficina Virtual (todos los usuarios autenticados) */}
+                          <button
+                            onClick={() => handleNavClick('virtual-office')}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl transition-colors text-left"
+                            style={{ color: currentTab === 'virtual-office' ? '#00FF88' : '#a1a1a1' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,136,0.07)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <Briefcase className="w-4 h-4 shrink-0" />
+                            Oficina Virtual
+                          </button>
+
                           {userProfile?.role === 'admin' && (
                             <button
                               onClick={() => handleNavClick('admin')}
@@ -232,7 +244,7 @@ export default function Navbar({
                               onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                             >
                               <PlusCircle className="w-4 h-4 shrink-0" />
-                              Oficina Virtual Admin
+                              Panel Admin
                             </button>
                           )}
 
@@ -325,6 +337,24 @@ export default function Navbar({
                 );
               })}
             </div>
+
+            {/* Oficina Virtual — acceso rápido mobile */}
+            {userProfile && (
+              <button
+                onClick={() => handleNavClick('virtual-office')}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all text-left ${
+                  currentTab === 'virtual-office'
+                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 shadow-md'
+                    : 'bg-neutral-900/80 border border-white/5 text-neutral-300 hover:bg-neutral-900 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Briefcase className={`w-4 h-4 ${currentTab === 'virtual-office' ? 'text-emerald-400' : 'text-neutral-400'}`} />
+                  <span>Oficina Virtual</span>
+                </div>
+                {currentTab === 'virtual-office' && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
+              </button>
+            )}
 
             {/* Mobile Web3 status & quick deposit bar */}
             <div className="pt-2 border-t border-white/10 space-y-2">

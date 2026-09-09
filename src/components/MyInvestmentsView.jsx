@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText, X, Download, Copy, Check, Award, Shield } from 'lucide-react';
+import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText, X, Download, Copy, Check, Award, Shield, ArrowDownLeft, ArrowUpRight, Wallet, History } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { fetchUserShares } from '../services/api';
+import { fetchUserShares, fetchUserWalletMovements } from '../services/api';
 
 export function generateCorporateContractPDF({ share, userProfile, asset, purchasedDate, txHash, numAmount }) {
   const doc = new jsPDF();
@@ -205,9 +205,12 @@ export function generateCorporateContractPDF({ share, userProfile, asset, purcha
 
 export default function MyInvestmentsView({ userProfile, initialShares = [], onRefresh }) {
   const [shares, setShares] = useState(initialShares);
+  const [movements, setMovements] = useState([]);
+  const [loadingMovements, setLoadingMovements] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedContractShare, setSelectedContractShare] = useState(null);
   const [copiedHash, setCopiedHash] = useState(false);
+  const [copiedMovementHashId, setCopiedMovementHashId] = useState(null);
 
   useEffect(() => {
     if (initialShares && initialShares.length > 0) {
@@ -215,6 +218,7 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
     } else {
       loadShares();
     }
+    loadMovements();
   }, [initialShares, userProfile?.id]);
 
   const loadShares = async () => {
@@ -229,6 +233,19 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
       console.error('Error al cargar portafolio:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMovements = async () => {
+    if (!userProfile?.id) return;
+    setLoadingMovements(true);
+    try {
+      const movs = await fetchUserWalletMovements(userProfile.id);
+      setMovements(movs);
+    } catch (err) {
+      console.error('Error al cargar movimientos de wallet:', err);
+    } finally {
+      setLoadingMovements(false);
     }
   };
 
@@ -391,6 +408,150 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
           })}
         </div>
       )}
+
+      {/* ── SECCIÓN: HISTORIAL DETALLADO DE LA WALLET (INGRESOS Y EGRESOS) ── */}
+      <div 
+        className="p-6 rounded-2xl space-y-5 animate-fade-in"
+        style={{ background: '#111715', border: '1px solid rgba(255,255,255,0.08)' }}
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-neutral-800 pb-4 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-white tracking-wide">Historial Detallado de la Wallet</h3>
+              <p className="text-xs text-neutral-400">
+                Registro transparente y auditable de todos los ingresos (depósitos) y egresos (compras RWA).
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={loadMovements}
+            className="btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingMovements ? 'animate-spin' : ''}`} />
+            <span>Refrescar Registro</span>
+          </button>
+        </div>
+
+        {loadingMovements ? (
+          <div className="p-8 text-center text-xs font-mono text-neutral-400">
+            Cargando historial de movimientos on-chain...
+          </div>
+        ) : movements.length === 0 ? (
+          <div className="p-8 text-center space-y-2 rounded-xl bg-neutral-900/40 border border-neutral-800">
+            <Wallet className="w-8 h-8 text-neutral-600 mx-auto" />
+            <p className="text-sm font-bold text-white">Sin movimientos registrados</p>
+            <p className="text-xs text-neutral-400">Tus depósitos en USDT e inversiones fraccionadas aparecerán reflejados aquí automáticamente.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead>
+                <tr className="border-b border-neutral-800 text-[10px] text-neutral-400 uppercase font-mono tracking-wider">
+                  <th className="py-3 px-4">Operación / Etiqueta</th>
+                  <th className="py-3 px-4">Monto</th>
+                  <th className="py-3 px-4">Fecha y Hora</th>
+                  <th className="py-3 px-4 text-right">Hash de Transacción (TxID)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800/60">
+                {movements.map((mov, mIdx) => {
+                  const isIncome = mov.type === 'income';
+                  const dateObj = mov.timestamp ? new Date(mov.timestamp) : new Date();
+                  
+                  // Formato DD/MM/YYYY - HH:MM
+                  const day = String(dateObj.getDate()).padStart(2, '0');
+                  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+                  const year = dateObj.getFullYear();
+                  const hours = String(dateObj.getHours()).padStart(2, '0');
+                  const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+                  const formattedDateTime = `${day}/${month}/${year} - ${hours}:${minutes}`;
+
+                  const txHash = mov.txHash || '0x...';
+                  const bscUrl = `https://bscscan.com/tx/${txHash}`;
+                  const isCopied = copiedMovementHashId === mov.id;
+
+                  return (
+                    <tr key={mov.id || `mov-${mIdx}`} className="hover:bg-neutral-900/50 transition-colors">
+                      {/* Tipo / Etiqueta */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`p-1.5 rounded-lg shrink-0 ${
+                            isIncome
+                              ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                              : 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
+                          }`}>
+                            {isIncome ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-bold text-white block truncate">{mov.label}</span>
+                            <span className="text-[10px] text-neutral-500 font-mono">
+                              {isIncome ? 'Ingreso · Depósito USDT' : 'Egreso · Fracción Token RWA'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Monto */}
+                      <td className="py-3.5 px-4 font-extrabold whitespace-nowrap">
+                        <span className={`px-2.5 py-1 rounded-lg border text-xs ${
+                          isIncome
+                            ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/30'
+                            : 'bg-amber-950/80 text-amber-400 border-amber-500/30'
+                        }`}>
+                          {isIncome ? '+' : '-'}${mov.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT
+                        </span>
+                      </td>
+
+                      {/* Fecha y Hora */}
+                      <td className="py-3.5 px-4 text-neutral-300 whitespace-nowrap font-mono text-[11px]">
+                        {formattedDateTime}
+                      </td>
+
+                      {/* Hash TxID completo con BscScan & Copiar */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span 
+                            title={txHash}
+                            className="bg-neutral-950 border border-neutral-800 px-2.5 py-1 rounded-lg text-[10px] font-mono text-emerald-400 break-all select-all inline-block max-w-[200px] sm:max-w-xs truncate"
+                          >
+                            {txHash}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(txHash);
+                              setCopiedMovementHashId(mov.id);
+                              setTimeout(() => setCopiedMovementHashId(null), 2000);
+                            }}
+                            className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-emerald-500/40 text-neutral-400 hover:text-emerald-400 transition-colors shrink-0"
+                            title="Copiar Hash completo"
+                          >
+                            {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                          <a
+                            href={bscUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-colors shrink-0 flex items-center gap-1"
+                            title="Ver en BscScan"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* ── MODAL IMPRESIÓN / CERTIFICADO JURÍDICO CORPORATIVO RWA ── */}
       {selectedContractShare && (() => {

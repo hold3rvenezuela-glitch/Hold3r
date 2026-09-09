@@ -8,6 +8,7 @@ import GovernanceView from './components/GovernanceView';
 import AdminPanel from './components/AdminPanel';
 import PublicExplorerView from './components/PublicExplorerView';
 import KycVerificationModal from './components/KycVerificationModal';
+import VirtualOfficeView from './components/VirtualOfficeView';
 import { 
   getCurrentSession, 
   getUserProfile, 
@@ -282,6 +283,19 @@ export default function App() {
                 }}
                 onRefresh={handleRefreshAssets}
                 onViewCatalog={() => setCurrentTab('investor')}
+              />
+            )}
+
+            {/* Vista: Oficina Virtual del Inversor */}
+            {currentTab === 'virtual-office' && userProfile && (
+              <VirtualOfficeView
+                userProfile={userProfile}
+                initialShares={userShares}
+                wallet={wallet}
+                assets={assets}
+                onProfileUpdated={updated => setUserProfile(prev => ({ ...prev, ...updated }))}
+                onOpenDeposit={() => { /* abre DepositModal via Navbar */ }}
+                onOpenKyc={() => setShowKycModal(true)}
               />
             )}
 
