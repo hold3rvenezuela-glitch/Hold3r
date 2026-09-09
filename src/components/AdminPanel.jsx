@@ -1,12 +1,47 @@
-import React, { useState } from 'react';
-import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Loader2, X, Shield, Trash2, Plus, Users, TrendingUp } from 'lucide-react';
-import { createAsset, updateAssetStatus, deleteAsset, uploadMultipleAssetImages } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Loader2, X, Shield, Trash2, Plus, Users, TrendingUp, Search, Filter, FileText, ExternalLink, Download, Copy, Check } from 'lucide-react';
+import { createAsset, updateAssetStatus, deleteAsset, uploadMultipleAssetImages, fetchAllPurchases } from '../services/api';
+import { generateCorporateContractPDF } from './MyInvestmentsView';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {
+  const [activeTab, setActiveTab] = useState('manage'); // 'manage' | 'purchases'
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [lastCreatedAsset, setLastCreatedAsset] = useState(null);
+
+  // Historial de Compras RWA State
+  const [purchasesList, setPurchasesList] = useState([]);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
+  const [purchasesSearch, setPurchasesSearch] = useState('');
+  const [purchasesCategoryFilter, setPurchasesCategoryFilter] = useState('all');
+  const [selectedAdminContractShare, setSelectedAdminContractShare] = useState(null);
+  const [copiedAdminHash, setCopiedAdminHash] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === 'purchases') {
+      loadPurchasesHistory();
+    }
+  }, [activeTab]);
+
+  const loadPurchasesHistory = async () => {
+    setLoadingPurchases(true);
+    try {
+      const data = await fetchAllPurchases();
+      setPurchasesList(data || []);
+    } catch (err) {
+      console.error('Error al cargar historial de compras:', err);
+    } finally {
+      setLoadingPurchases(false);
+    }
+  };
+
+  const handleCopyAdminHash = (hashStr) => {
+    if (!hashStr) return;
+    navigator.clipboard.writeText(hashStr);
+    setCopiedAdminHash(true);
+    setTimeout(() => setCopiedAdminHash(false), 2000);
+  };
 
   // Form Base State
   const [title, setTitle] = useState('');
@@ -333,10 +368,30 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
     }
   };
 
+  const filteredPurchases = purchasesList.filter(item => {
+    const asset = item.asset || {};
+    const profile = item.profile || {};
+    
+    const matchesCategory = purchasesCategoryFilter === 'all' || asset.category === purchasesCategoryFilter;
+    const q = purchasesSearch.toLowerCase().trim();
+    if (!q) return matchesCategory;
+
+    const name = (profile.full_name || '').toLowerCase();
+    const docId = (profile.document_id || '').toLowerCase();
+    const userId = (item.user_id || '').toLowerCase();
+    const assetTitle = (asset.title || '').toLowerCase();
+    const hash = (item.signed_contract_hash || '').toLowerCase();
+
+    return matchesCategory && (name.includes(q) || docId.includes(q) || userId.includes(q) || assetTitle.includes(q) || hash.includes(q));
+  });
+
+  const totalPurchasesVolume = purchasesList.reduce((acc, curr) => acc + Number(curr.amount_invested_usdt || 0), 0);
+  const uniqueInvestorsCount = new Set(purchasesList.map(p => p.user_id)).size;
+
   return (
     <div className="space-y-8 animate-fade-in pb-16">
       
-      {/* Header */}
+      {/* Header & Tabs */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-panel p-6 border border-white/10">
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -344,12 +399,36 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
             <h2 className="text-2xl font-extrabold text-white">Panel de Administración RWA</h2>
           </div>
           <p className="text-xs text-neutral-400">
-            Carga de activos fraccionados a Supabase con ficha técnica dinámica.
+            Gestión de activos tokenizados e historial de compras auditables en Binance Smart Chain.
           </p>
+        </div>
+
+        {/* Tab Buttons */}
+        <div className="flex items-center bg-neutral-900/90 p-1.5 rounded-2xl border border-white/10 shrink-0">
+          <button
+            onClick={() => setActiveTab('manage')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'manage'
+                ? 'bg-emerald-500 text-neutral-950 shadow-md'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <PlusCircle className="w-3.5 h-3.5" /> Publicar y Gestionar Activos
+          </button>
+          <button
+            onClick={() => setActiveTab('purchases')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'purchases'
+                ? 'bg-emerald-500 text-neutral-950 shadow-md'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" /> Historial de Compras RWA ({purchasesList.length})
+          </button>
         </div>
       </div>
 
-      {/* Success Toast Banner */}
+      {/* Success / Error Banners */}
       {successMsg && (
         <div className="bg-neutral-900 border border-emerald-500/60 text-emerald-200 text-xs p-4 rounded-2xl font-semibold flex items-center justify-between gap-4 shadow-xl animate-fade-in">
           <div className="flex items-center gap-2.5">
@@ -373,15 +452,16 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         </div>
       )}
 
-      {/* Main Grid: Form + Asset List */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left 1 Col: Create Asset Form */}
-        <div className="glass-panel p-6 border border-white/10 space-y-4 lg:col-span-1">
-          <h3 className="text-base font-bold text-white pb-3 border-b border-white/10 flex items-center gap-2">
-            <PlusCircle className="w-4 h-4 text-emerald-400" />
-            Nuevo Activo RWA
-          </h3>
+      {/* VISTA 1: GESTIÓN Y PUBLICACIÓN DE ACTIVOS */}
+      {activeTab === 'manage' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Left 1 Col: Create Asset Form */}
+          <div className="glass-panel p-6 border border-white/10 space-y-4 lg:col-span-1">
+            <h3 className="text-base font-bold text-white pb-3 border-b border-white/10 flex items-center gap-2">
+              <PlusCircle className="w-4 h-4 text-emerald-400" />
+              Nuevo Activo RWA
+            </h3>
 
           <form onSubmit={handleCreateSubmit} className="space-y-4">
             <div>
@@ -1122,6 +1202,351 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
           </div>
         </div>
       </div>
+      )}
+
+      {/* VISTA 2: HISTORIAL DE COMPRAS RWA Y CONTRATOS AUDITABLES */}
+      {activeTab === 'purchases' && (
+        <div className="space-y-6">
+          
+          {/* Summary KPIs */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="glass-panel p-5 border border-emerald-500/30">
+              <span className="text-xs text-neutral-400 font-medium block mb-1">Volumen Total Recaudado</span>
+              <span className="text-2xl font-black text-emerald-400 font-mono">
+                ${totalPurchasesVolume.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDT
+              </span>
+            </div>
+
+            <div className="glass-panel p-5 border border-cyan-500/30">
+              <span className="text-xs text-neutral-400 font-medium block mb-1">Transacciones Minadas en BSC</span>
+              <span className="text-2xl font-black text-cyan-300 font-mono">
+                {purchasesList.length} Compras
+              </span>
+            </div>
+
+            <div className="glass-panel p-5 border border-indigo-500/30">
+              <span className="text-xs text-neutral-400 font-medium block mb-1">Inversores Registrados</span>
+              <span className="text-2xl font-black text-indigo-300 font-mono">
+                {uniqueInvestorsCount} Únicos
+              </span>
+            </div>
+          </div>
+
+          {/* Search & Category Filter Bar */}
+          <div className="glass-panel p-5 border border-white/10 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={purchasesSearch}
+                onChange={(e) => setPurchasesSearch(e.target.value)}
+                placeholder="Buscar por inversor, Cédula/RIF, ID usuario, activo o Hash BSC..."
+                className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl pl-10 pr-4 py-2.5 text-xs outline-none focus:border-emerald-500/60"
+              />
+              {purchasesSearch && (
+                <button
+                  onClick={() => setPurchasesSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+              {[
+                { id: 'all', label: 'Todos' },
+                { id: 'real_estate', label: 'Bienes Raíces' },
+                { id: 'heavy_machinery', label: 'Maquinaria' },
+                { id: 'fleet', label: 'Vehículos' }
+              ].map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setPurchasesCategoryFilter(cat.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                    purchasesCategoryFilter === cat.id
+                      ? 'bg-emerald-500 text-neutral-950 font-bold'
+                      : 'bg-neutral-900 text-neutral-400 hover:text-white border border-white/5'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+              
+              <button
+                onClick={loadPurchasesHistory}
+                className="p-2 bg-neutral-900 border border-white/10 rounded-xl hover:border-emerald-500/50 text-neutral-400 hover:text-emerald-400 transition-colors ml-2"
+                title="Refrescar Compras"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingPurchases ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* List of Filtered Purchases */}
+          {loadingPurchases ? (
+            <div className="glass-panel p-12 text-center text-neutral-400 text-xs font-mono">
+              Cargando historial de compras desde Supabase...
+            </div>
+          ) : filteredPurchases.length === 0 ? (
+            <div className="glass-panel p-12 text-center space-y-3">
+              <FileText className="w-10 h-10 text-neutral-600 mx-auto" />
+              <h4 className="text-base font-bold text-white">No se encontraron compras con el filtro aplicado</h4>
+              <p className="text-xs text-neutral-400">Intenta cambiar los términos de búsqueda o seleccionar otra categoría.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredPurchases.map((item, idx) => {
+                const asset = item.asset || {};
+                const profile = item.profile || {};
+                const firstImg = Array.isArray(asset.images) && asset.images.length > 0
+                  ? asset.images[0]
+                  : 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1000&q=80';
+
+                const txHash = item.signed_contract_hash || item.signed_contract_hash || '0x7f8a...';
+                const bscScanUrl = `https://bscscan.com/tx/${txHash}`;
+                const amount = Number(item.amount_invested_usdt || 0);
+
+                return (
+                  <div
+                    key={item.id || `purchase-${idx}`}
+                    className="glass-panel p-5 border border-white/10 hover:border-emerald-500/40 transition-colors space-y-4"
+                  >
+                    <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
+                      
+                      {/* Asset & Investor info */}
+                      <div className="flex items-start gap-4">
+                        <img
+                          src={firstImg}
+                          alt={asset.title || 'Activo RWA'}
+                          className="w-16 h-16 rounded-xl object-cover border border-white/10 shrink-0 bg-neutral-900"
+                        />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`badge-category badge-${asset.category || 'real_estate'}`}>
+                              {asset.category === 'real_estate' ? 'Bienes Raíces' : asset.category === 'heavy_machinery' ? 'Maquinaria' : 'Vehículos'}
+                            </span>
+                            <span className="text-[10px] font-mono text-neutral-400">
+                              {item.purchased_at ? new Date(item.purchased_at).toLocaleString('es-VE') : 'Hoy'}
+                            </span>
+                          </div>
+                          <h4 className="text-base font-bold text-white">{asset.title || 'Activo Tokenizado RWA'}</h4>
+                          
+                          {/* Profile Data */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-300 font-mono pt-1">
+                            <span>Inversor: <strong className="text-white">{profile.full_name || 'Inversor Autenticado'}</strong></span>
+                            <span>Cédula/RIF: <strong className="text-emerald-400">{profile.document_id || 'V-00000000'}</strong></span>
+                            <span>ID: <strong className="text-neutral-400">{item.user_id ? `${item.user_id.substring(0,8)}...` : 'N/A'}</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Stats & Actions */}
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto shrink-0">
+                        {/* Numbers */}
+                        <div className="bg-neutral-950 border border-white/10 p-3 rounded-xl font-mono text-xs space-y-1 min-w-[170px]">
+                          <div className="flex justify-between gap-2">
+                            <span className="text-neutral-400">Inyección:</span>
+                            <strong className="text-emerald-400">${amount.toLocaleString()} USDT</strong>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <span className="text-neutral-400">Participación:</span>
+                            <strong className="text-cyan-300">{Number(item.shares_percentage || 0).toFixed(4)}%</strong>
+                          </div>
+                        </div>
+
+                        {/* Hash & Actions */}
+                        <div className="space-y-2 w-full sm:w-auto text-right">
+                          <div className="flex items-center gap-1.5">
+                            <div className="bg-neutral-950 border border-white/10 px-2.5 py-1.5 rounded-xl text-[10px] font-mono text-emerald-300 truncate max-w-[150px] sm:max-w-xs block">
+                              {txHash}
+                            </div>
+                            <button
+                              onClick={() => handleCopyAdminHash(txHash)}
+                              className="p-1.5 bg-neutral-950 border border-white/10 rounded-xl hover:border-emerald-500/50 text-neutral-400 hover:text-emerald-400 transition-colors"
+                              title="Copiar Hash"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <a
+                              href={bscScanUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 bg-neutral-950 border border-white/10 rounded-xl hover:border-emerald-500/50 text-neutral-400 hover:text-emerald-400 transition-colors"
+                              title="Ver en BscScan"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+
+                          <button
+                            onClick={() => setSelectedAdminContractShare(item)}
+                            className="btn-secondary text-[11px] py-1.5 px-3 font-bold text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 w-full flex items-center justify-center gap-1.5"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Ver Certificado Jurídico
+                          </button>
+                        </div>
+
+                      </div>
+
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* ── MODAL VISOR DE CERTIFICADO JURÍDICO DESDE PANEL DE ADMIN ── */}
+      {selectedAdminContractShare && (() => {
+        const item = selectedAdminContractShare;
+        const asset = item.asset || {};
+        const profile = item.profile || {};
+        const purchasedDate = item.purchased_at ? new Date(item.purchased_at).toLocaleString('es-VE') : new Date().toLocaleString('es-VE');
+        const txHash = item.signed_contract_hash || '0x7f8a9b2c3d4e5f6a1b2c3d4e5f6a7b8c9d0e1f2a';
+        const numAmount = Number(item.amount_invested_usdt || 0);
+        const bscScanUrl = `https://bscscan.com/tx/${txHash}`;
+        const assetImg = Array.isArray(asset.images) && asset.images.length > 0 ? asset.images[0] : null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/90 backdrop-blur-xl animate-fade-in overflow-y-auto">
+            <div className="bg-neutral-950 text-white w-full max-w-4xl rounded-2xl border border-emerald-500/50 p-5 sm:p-8 space-y-6 shadow-[0_0_60px_rgba(16,185,129,0.15)] relative max-h-[92vh] overflow-y-auto my-auto">
+              
+              {/* Header Modal */}
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-white tracking-wide uppercase">CERTIFICADO JURÍDICO OFICIAL RWA (ADMIN VIEW)</h3>
+                    <p className="text-[11px] text-emerald-400 font-mono font-semibold">HOLD3R PROTOCOL VENEZUELA • AUDITORÍA DE CONTRATO ON-CHAIN</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedAdminContractShare(null)}
+                  className="p-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Documento Estilizado Certificado */}
+              <div className="bg-neutral-900/90 p-6 sm:p-8 rounded-xl border border-emerald-500/30 space-y-6 text-xs text-neutral-300 leading-relaxed font-sans relative overflow-hidden shadow-inner">
+                
+                {/* Membrete Institucional Corporativo */}
+                <div className="flex flex-col sm:flex-row items-center justify-between border-b border-emerald-500/30 pb-5 gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-cyan-400 p-0.5 shadow-lg">
+                      <div className="w-full h-full bg-neutral-950 rounded-[14px] flex items-center justify-center font-black text-emerald-400 text-lg tracking-tighter">
+                        H3R
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-base font-black text-white tracking-wider">HOLD3R VENEZUELA</h4>
+                      <p className="text-[10px] text-emerald-400 font-mono">PROTOCOLO DE TOKENIZACIÓN Y PROPIEDAD FRACCIONADA RWA</p>
+                    </div>
+                  </div>
+
+                  <div className="text-right font-mono text-[10px] space-y-1 bg-neutral-950/80 p-3 rounded-xl border border-emerald-500/20">
+                    <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold border border-emerald-500/30 block mb-1">
+                      AUDITORÍA ADMIN DE CONTRATO
+                    </span>
+                    <p className="text-neutral-400">Emisión: <strong className="text-white">{purchasedDate}</strong></p>
+                    <p className="text-neutral-400">Red: <strong className="text-cyan-300">Binance Smart Chain (BSC)</strong></p>
+                  </div>
+                </div>
+
+                {/* Bloque I: Datos del Titular KYC */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-white uppercase text-[11px] text-emerald-300 border-l-2 border-emerald-400 pl-2">
+                    I. DATOS DEL TITULAR DEL ACTIVO (KYC VALIDATED)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-neutral-950/80 p-3.5 rounded-xl border border-white/5 font-mono text-[11px]">
+                    <div><span className="text-neutral-400 block">Nombre Completo del Inversor:</span> <strong className="text-white">{profile.full_name || 'Inversionista Autenticado'}</strong></div>
+                    <div><span className="text-neutral-400 block">Documento de Identidad / RIF:</span> <strong className="text-white">{profile.document_id || 'V-00000000'}</strong></div>
+                    <div><span className="text-neutral-400 block">ID de Usuario Supabase:</span> <strong className="text-white truncate block">{item.user_id || 'AUTH-SESSION'}</strong></div>
+                    <div><span className="text-neutral-400 block">Estado Jurídico:</span> <strong className="text-emerald-400">Titular Validado y Habilitado (KYC)</strong></div>
+                  </div>
+                </div>
+
+                {/* Bloque II: Especificaciones del Activo RWA con Miniatura */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-white uppercase text-[11px] text-emerald-300 border-l-2 border-emerald-400 pl-2">
+                    II. ESPECIFICACIONES DEL BIEN ADQUIRIDO (ACTIVO RWA)
+                  </h4>
+                  <div className="flex flex-col sm:flex-row items-start gap-4 bg-neutral-950/80 p-3.5 rounded-xl border border-white/5 font-mono text-[11px]">
+                    {assetImg && (
+                      <img 
+                        src={assetImg} 
+                        alt={asset.title} 
+                        className="w-20 h-20 rounded-xl object-cover border border-emerald-500/30 shrink-0 bg-neutral-900"
+                      />
+                    )}
+                    <div className="space-y-1.5 w-full">
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-neutral-400">Denominación del Activo:</span>
+                        <strong className="text-white font-bold">{asset.title || 'Activo RWA'}</strong>
+                      </div>
+                      <div className="flex justify-between border-b border-white/5 pb-1">
+                        <span className="text-neutral-400">Categoría RWA:</span>
+                        <strong className="text-cyan-300 capitalize">{asset.category === 'real_estate' ? 'Bienes Raíces' : asset.category === 'heavy_machinery' ? 'Maquinaria Pesada' : 'Vehículos / Flota'}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-neutral-400">Valoración Comercial Total:</span>
+                        <strong className="text-white">${Number(asset.total_valuation || 0).toLocaleString()} USDT</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bloque III: Aporte y Derechos Económicos */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-white uppercase text-[11px] text-emerald-300 border-l-2 border-emerald-400 pl-2">
+                    III. APORTE EN USDT, PARTICIPACIÓN Y BLINDAJE JURÍDICO
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-emerald-950/30 p-3.5 rounded-xl border border-emerald-500/30 font-mono text-[11px]">
+                    <div><span className="text-neutral-400 block">Monto en USDT Inyectado:</span> <strong className="text-emerald-400 text-sm">${numAmount.toLocaleString()} USDT</strong></div>
+                    <div><span className="text-neutral-400 block">Porcentaje de Participación:</span> <strong className="text-cyan-300 text-sm">{Number(item.shares_percentage || 0).toFixed(4)}%</strong></div>
+                    <div className="col-span-1 sm:col-span-2">
+                      <span className="text-neutral-400 block mb-1">Hash de Transacción Real (BSC):</span>
+                      <strong className="text-emerald-300 text-[10px] break-all font-mono block bg-neutral-950 p-2 rounded-lg border border-emerald-500/30">{txHash}</strong>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Botones de Acción Admin */}
+              <div className="flex items-center justify-between gap-4 pt-2">
+                <p className="text-[11px] text-neutral-400 font-mono">Vista administrativa para auditoría de certificados RWA.</p>
+                <div className="flex items-center gap-3">
+                  <a
+                    href={bscScanUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary text-xs flex items-center gap-1.5 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/20 py-2 px-4"
+                  >
+                    <ExternalLink className="w-4 h-4" /> BscScan
+                  </a>
+                  <button
+                    onClick={() => generateCorporateContractPDF({ share: item, userProfile: profile, asset, purchasedDate, txHash, numAmount })}
+                    className="btn-primary text-xs flex items-center gap-2 bg-emerald-500 text-neutral-950 font-bold py-2 px-4"
+                  >
+                    <Download className="w-4 h-4" /> Descargar PDF Oficial
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
+

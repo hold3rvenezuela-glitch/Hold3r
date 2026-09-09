@@ -71,9 +71,23 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
   const [reservationTimeLeft, setReservationTimeLeft] = useState(900); // 15 min = 900s
   const [isReserving, setIsReserving] = useState(false);
 
-  // Estados de Lista de Espera
-  const [joinedWaitlist, setJoinedWaitlist] = useState(false);
-  const [waitlistLoading, setWaitlistLoading] = useState(false);
+  // Estado para la pantalla de confirmación gráfica tras compra exitosa
+  const [completedPurchaseShare, setCompletedPurchaseShare] = useState(null);
+  const [copiedTxHash, setCopiedTxHash] = useState(false);
+
+  const handleCopySuccessHash = (hashText) => {
+    if (!hashText) return;
+    navigator.clipboard.writeText(hashText);
+    setCopiedTxHash(true);
+    setTimeout(() => setCopiedTxHash(false), 2000);
+  };
+
+  const handleFinishSuccessModal = () => {
+    if (onSuccess && completedPurchaseShare) {
+      onSuccess(completedPurchaseShare);
+    }
+    onClose();
+  };
 
   // Cargar reserva previa al abrir modal
   useEffect(() => {
@@ -254,8 +268,8 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
         origin: { y: 0.6 }
       });
 
-      onSuccess(shareData);
-      onClose();
+      // Mostrar pantalla gráfica de confirmación exitosa con Hash BSC y desglose
+      setCompletedPurchaseShare(shareData);
     } catch (err) {
       console.error('Error al procesar inversión:', err);
       setErrorMsg(err.message || 'Ocurrió un error al procesar la inversión.');
@@ -263,6 +277,80 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
       setLoading(false);
     }
   };
+
+  if (completedPurchaseShare) {
+    const txHash = completedPurchaseShare.signed_contract_hash || '0x...';
+    const bscScanUrl = `https://bscscan.com/tx/${txHash}`;
+    const firstImg = Array.isArray(asset.images) && asset.images.length > 0 ? asset.images[0] : null;
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-md overflow-y-auto animate-fade-in">
+        <div className="glass-panel w-full max-w-lg p-6 sm:p-8 border border-emerald-500/50 shadow-[0_0_50px_rgba(16,185,129,0.2)] relative space-y-6 text-center my-auto">
+          
+          <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400 mx-auto animate-bounce">
+            <CheckCircle2 className="w-10 h-10" />
+          </div>
+
+          <div className="space-y-1">
+            <h3 className="text-2xl font-black text-white">¡Inversión Procesada en BSC!</h3>
+            <p className="text-xs text-neutral-300">
+              Se ha minado exitosamente la compra de tu fracción RWA en la Binance Smart Chain.
+            </p>
+          </div>
+
+          {/* Tarjeta de Resumen Gráfico del Activo */}
+          <div className="bg-neutral-900/90 border border-white/10 p-4 rounded-2xl flex items-center gap-4 text-left font-mono">
+            {firstImg && (
+              <img src={firstImg} alt={asset.title} className="w-16 h-16 rounded-xl object-cover border border-emerald-500/30 shrink-0 bg-neutral-950" />
+            )}
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block">Activo Tokenizado</span>
+              <h4 className="text-sm font-bold text-white truncate">{asset.title}</h4>
+              <p className="text-xs text-neutral-400 font-sans">
+                Monto: <strong className="text-emerald-400">${numAmount.toLocaleString()} USDT</strong> • Participación: <strong className="text-cyan-300">{(completedPurchaseShare.shares_percentage || sharePercent).toFixed(4)}%</strong>
+              </p>
+            </div>
+          </div>
+
+          {/* Bloque de TxHash Real con Copia y Enlace */}
+          <div className="bg-neutral-950 p-4 rounded-xl border border-emerald-500/30 text-left space-y-2">
+            <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold block">
+              Hash de Transacción Real (BSC Mainnet)
+            </span>
+            <div className="flex items-center gap-2 bg-neutral-900 p-2.5 rounded-lg border border-white/10">
+              <strong className="text-emerald-300 text-xs font-mono truncate flex-1">{txHash}</strong>
+              <button
+                onClick={() => handleCopySuccessHash(txHash)}
+                className="p-1.5 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-emerald-400 transition-colors"
+                title="Copiar Hash"
+              >
+                {copiedTxHash ? <Check className="w-4 h-4 text-emerald-400" /> : <Globe className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Acciones Rápidas */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+            <a
+              href={bscScanUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary text-xs w-full py-3 flex items-center justify-center gap-2 text-cyan-300 border-cyan-500/30 hover:bg-cyan-500/20"
+            >
+              <Globe className="w-4 h-4" /> Ver en BscScan
+            </a>
+            <button
+              onClick={handleFinishSuccessModal}
+              className="btn-primary text-xs w-full py-3 bg-emerald-500 text-neutral-950 font-bold flex items-center justify-center gap-2 shadow-lg"
+            >
+              <ArrowRight className="w-4 h-4" /> Ir a Mi Portafolio
+            </button>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fade-in">

@@ -442,6 +442,58 @@ export async function fetchUserShares(userId) {
   return data || [];
 }
 
+export async function fetchAllPurchases() {
+  // Intentar consultar primero la vista de compras o la tabla asset_shares con joins de profile y asset
+  try {
+    const { data, error } = await supabase
+      .from('rwa_purchases_view')
+      .select('*');
+
+    if (!error && data && data.length > 0) {
+      return data.map(item => ({
+        id: item.share_id,
+        user_id: item.user_id,
+        asset_id: item.asset_id,
+        shares_percentage: item.shares_percentage,
+        amount_invested_usdt: item.amount_invested_usdt,
+        signed_contract_hash: item.tx_hash,
+        purchased_at: item.purchased_at,
+        profile: {
+          id: item.user_id,
+          full_name: item.investor_name || 'Inversor Registrado',
+          document_id: item.investor_document_id || 'N/A',
+          role: item.user_role
+        },
+        asset: {
+          id: item.asset_id,
+          title: item.asset_title,
+          category: item.asset_category,
+          total_valuation: item.asset_total_valuation,
+          funded_amount: item.asset_funded_amount,
+          status: item.asset_status,
+          images: item.asset_images
+        }
+      }));
+    }
+  } catch (_vErr) {
+    // Fallback a join directo en Supabase
+  }
+
+  const { data, error } = await supabase
+    .from(TABLES.ASSET_SHARES)
+    .select(`
+      *,
+      asset:assets(*),
+      profile:profiles(*)
+    `)
+    .order('purchased_at', { ascending: false });
+
+  if (error) {
+    console.warn('Error al obtener historial general de compras:', error.message);
+  }
+  return data || [];
+}
+
 export async function investInAsset({ userId, wallet, asset, investmentUsdt, signedHash = null }) {
   const amountUsdt = Number(investmentUsdt);
   const totalValuation = Number(asset.total_valuation);
