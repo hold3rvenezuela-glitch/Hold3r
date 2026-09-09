@@ -15,7 +15,7 @@ const SpecRow = ({ icon, label, value, mono = false, fullWidth = false }) => (
   </div>
 );
 
-export default function InvestmentModal({ asset, userProfile, wallet, onClose, onSuccess, onOpenWeb3Modal }) {
+export default function InvestmentModal({ asset, userProfile, wallet, onClose, onSuccess, onOpenWeb3Modal, onOpenKycModal }) {
   const { address: wcAddress, isConnected: wcIsConnected } = useWeb3ModalAccount();
   const { walletProvider } = useWeb3ModalProvider();
   const activeWalletAddress = (wcIsConnected && wcAddress) ? wcAddress : null;
@@ -848,6 +848,42 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
                     Al confirmar, se emitirá una firma digital indexada en Supabase vinculada a tu Cédula/RIF <strong className="text-white font-mono">{userProfile?.document_id || 'V-00000000'}</strong>.
                   </p>
                 </div>
+
+                {/* 🔒 Alerta Inferior de Validación KYC Obligatoria */}
+                {userProfile?.kyc_status !== 'approved' && (
+                  <div className="p-4 rounded-2xl bg-amber-950/80 border border-amber-500/60 text-amber-200 space-y-2.5 shadow-xl animate-fade-in">
+                    <div className="flex items-start gap-2.5">
+                      <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <h5 className="text-xs font-extrabold text-amber-300 uppercase tracking-wide">
+                          🔒 Requisito KYC Obligatorio para Invertir
+                        </h5>
+                        <p className="text-[11px] text-amber-200/90 mt-0.5 leading-relaxed">
+                          Tu cuenta aún no ha sido verificada por el administrador. Para adquirir acciones o fracciones RWA debes completar tu Verificación KYC.
+                        </p>
+                      </div>
+                    </div>
+                    {onOpenKycModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenKycModal}
+                        className="w-full py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
+                      >
+                        <Shield className="w-4 h-4" />
+                        <span>Completar Verificación KYC Ahora</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Alerta de Error Duplicada Inferior */}
+                {errorMsg && userProfile?.kyc_status === 'approved' && (
+                  <div className="bg-rose-950/90 border border-rose-500/70 text-rose-300 text-xs p-3.5 rounded-xl font-medium flex items-center gap-2 shadow-lg">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{errorMsg}</span>
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex items-center justify-end gap-3 pt-2">

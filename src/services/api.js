@@ -151,13 +151,13 @@ export async function getUserWallet(userId) {
     console.error('Error al obtener wallet:', error);
   }
 
-  // Si no tiene wallet por alguna razón, se la creamos automáticamente
+  // Si no tiene wallet por alguna razón, se la creamos automáticamente con balance en 0.00
   if (!data && userId) {
     const newWallet = {
       user_id: userId,
       usdt_address: generateUsdtAddress('TRC20'),
       network: 'TRC20',
-      balance: 1500.00,
+      balance: 0.00,
       updated_at: new Date().toISOString()
     };
     const { data: created } = await supabase
@@ -256,6 +256,7 @@ export async function submitKycVerification(payload) {
     addressCountry,
     addressState,
     addressCity,
+    addressStreet,
     bep20Wallet,
     idDocumentUrl,
     rifDocumentUrl,
@@ -270,6 +271,7 @@ export async function submitKycVerification(payload) {
     address_country: addressCountry,
     address_state: addressState,
     address_city: addressCity,
+    address_street: addressStreet || '',
     bep20_wallet: bep20Wallet,
     id_document_url: idDocumentUrl,
     rif_document_url: rifDocumentUrl,
@@ -289,12 +291,13 @@ export async function submitKycVerification(payload) {
     throw new Error(error.message || 'Error al guardar la solicitud KYC.');
   }
 
-  // Actualizar estado del perfil del usuario a 'pending' y guardar wallet BEP20
+  // Actualizar estado del perfil del usuario a 'pending' y guardar wallet BEP20 y dirección
   await supabase
     .from(TABLES.PROFILES)
     .update({ 
       kyc_status: 'pending',
-      bep20_wallet: bep20Wallet
+      bep20_wallet: bep20Wallet,
+      address_street: addressStreet || ''
     })
     .eq('id', userId);
 

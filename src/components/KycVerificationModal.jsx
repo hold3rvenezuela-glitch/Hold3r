@@ -14,6 +14,7 @@ export default function KycVerificationModal({ isOpen, onClose, userProfile, onS
   const [addressCountry, setAddressCountry] = useState('Venezuela');
   const [addressState, setAddressState]     = useState('');
   const [addressCity, setAddressCity]       = useState('');
+  const [addressStreet, setAddressStreet]   = useState(userProfile?.address_street || '');
   const [bep20Wallet, setBep20Wallet]       = useState(userProfile?.bep20_wallet || '');
 
   // File & Camera States
@@ -97,8 +98,8 @@ export default function KycVerificationModal({ isOpen, onClose, userProfile, onS
       return;
     }
 
-    if (!fullName || !birthDate || !documentId || !addressState || !addressCity || !bep20Wallet) {
-      setErrorMsg('Por favor completa todos los campos requeridos en el formulario.');
+    if (!fullName || !birthDate || !documentId || !addressState || !addressCity || !addressStreet || !bep20Wallet) {
+      setErrorMsg('Por favor completa todos los campos requeridos en el formulario, incluyendo tu Dirección de Vivienda.');
       return;
     }
 
@@ -142,6 +143,7 @@ export default function KycVerificationModal({ isOpen, onClose, userProfile, onS
         addressCountry,
         addressState,
         addressCity,
+        addressStreet,
         bep20Wallet,
         idDocumentUrl: idUrl,
         rifDocumentUrl: rifUrl,
@@ -320,6 +322,20 @@ export default function KycVerificationModal({ isOpen, onClose, userProfile, onS
                   className="w-full py-2 px-3 text-xs rounded-lg bg-neutral-900 border border-neutral-800 text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] text-neutral-400 mb-1">
+                Dirección de Vivienda Detallada (Calle, Av, Urb, Res, Edif/Casa, Apto) *
+              </label>
+              <input
+                type="text"
+                required
+                value={addressStreet}
+                onChange={e => setAddressStreet(e.target.value)}
+                placeholder="Ej. Av. Francisco de Miranda, Urb. Altamira, Res. Los Pinos, Piso 4, Apto 4-B"
+                className="w-full py-2.5 px-3 text-xs rounded-lg bg-neutral-900 border border-neutral-800 text-white focus:outline-none focus:border-emerald-500"
+              />
             </div>
           </div>
 

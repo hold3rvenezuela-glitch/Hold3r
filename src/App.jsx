@@ -307,6 +307,7 @@ export default function App() {
           wallet={wallet}
           onClose={() => setSelectedInvestAsset(null)}
           onSuccess={handleInvestmentSuccess}
+          onOpenKycModal={() => { setSelectedInvestAsset(null); setShowKycModal(true); }}
         />
       )}
     </div>

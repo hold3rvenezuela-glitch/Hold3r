@@ -1535,7 +1535,7 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono bg-neutral-950/60 p-3 rounded-xl border border-neutral-800">
                       <div>
                         <span className="text-neutral-400 block text-[10px] uppercase">Dirección de Vivienda:</span>
-                        <strong className="text-neutral-200">{item.address_city}, Estado {item.address_state}, {item.address_country}</strong>
+                        <strong className="text-neutral-200">{item.address_street ? `${item.address_street}, ` : ''}{item.address_city}, Estado {item.address_state}, {item.address_country}</strong>
                       </div>
                       <div>
                         <span className="text-neutral-400 block text-[10px] uppercase">Wallet BEP20 para Ganancias:</span>

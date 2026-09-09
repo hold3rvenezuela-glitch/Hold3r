@@ -3,11 +3,12 @@
 -- HOLD3R VENEZUELA • PROTOCOLO DE TOKENIZACIÓN Y PROPIEDAD FRACCIONADA
 -- =============================================================================
 
--- 1. Agregar columnas de nickname y kyc_status a public.profiles
+-- 1. Agregar columnas de nickname, kyc_status, bep20_wallet y address_street a public.profiles
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS nickname text UNIQUE,
   ADD COLUMN IF NOT EXISTS kyc_status text DEFAULT 'none', -- 'none' | 'pending' | 'approved' | 'rejected'
-  ADD COLUMN IF NOT EXISTS bep20_wallet text;
+  ADD COLUMN IF NOT EXISTS bep20_wallet text,
+  ADD COLUMN IF NOT EXISTS address_street text;
 
 -- Índice para búsqueda rápida por nickname
 CREATE INDEX IF NOT EXISTS idx_profiles_nickname ON public.profiles (nickname);
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS public.kyc_verifications (
   address_country text NOT NULL,
   address_state text NOT NULL,
   address_city text NOT NULL,
+  address_street text,
   bep20_wallet text NOT NULL,
   id_document_url text NOT NULL,
   rif_document_url text NOT NULL,
