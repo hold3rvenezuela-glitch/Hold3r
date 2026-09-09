@@ -233,6 +233,8 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
           }
         });
         contractTxHash = txRes.txHash;
+      } else if (paymentMethod === 'credit') {
+        setErrorMsg('⚡ Ejecutando contrato inteligente en Binance Smart Chain vía Backend Relayer...');
       }
 
       const shareData = await investInAsset({

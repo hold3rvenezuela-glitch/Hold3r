@@ -279,12 +279,21 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
                       doc.text(`Activo Adquirido: ${title}`, 20, 50);
                       doc.text(`Monto Invertido: $${numAmount.toLocaleString()} USDT`, 20, 60);
                       doc.text(`Participación: ${Number(share.shares_percentage || 0).toFixed(4)}%`, 20, 70);
-                      doc.text(`Hash de Firma / TxHash: ${txHash}`, 20, 80);
+                      doc.text(`Hash de Firma / TxHash (BSC): ${txHash}`, 20, 80);
                       
                       doc.setFontSize(8);
                       doc.text('Este documento respalda legalmente la propiedad fraccionada en el protocolo HOLD3R.', 20, 100);
                       
-                      doc.save(`Contrato_HOLD3R_${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+                      // Generación de descarga directa mediante Blob y enlace programático
+                      const pdfBlob = doc.output('blob');
+                      const pdfUrl = URL.createObjectURL(pdfBlob);
+                      const downloadLink = document.createElement('a');
+                      downloadLink.href = pdfUrl;
+                      downloadLink.download = `Contrato_HOLD3R_${title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+                      document.body.appendChild(downloadLink);
+                      downloadLink.click();
+                      document.body.removeChild(downloadLink);
+                      URL.revokeObjectURL(pdfUrl);
                     }}
                     className="btn-primary text-xs flex items-center gap-2 bg-emerald-500 text-neutral-950 font-bold"
                   >
