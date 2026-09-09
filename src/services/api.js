@@ -43,10 +43,11 @@ export function getRedirectUrl() {
   return 'https://hold3r.vercel.app';
 }
 
-export async function signUpUser({ email, password, fullName, documentId }) {
+export async function signUpUser({ email, password, fullName, documentId, nickname }) {
   // Determinar rol automáticamente según el correo electrónico
   const cleanEmail = (email || '').trim().toLowerCase();
   const assignedRole = cleanEmail === 'hold3rvenezuela@gmail.com' ? 'admin' : 'investor';
+  const cleanNickname = (nickname || '').trim().replace(/^@/, '');
 
   // 1. Crear usuario en auth.users enviando metadatos exactos y la URL de redirección oficial
   const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -57,6 +58,7 @@ export async function signUpUser({ email, password, fullName, documentId }) {
       data: {
         full_name: fullName,
         document_id: documentId,
+        nickname: cleanNickname,
         role: assignedRole
       }
     }
@@ -76,7 +78,9 @@ export async function signUpUser({ email, password, fullName, documentId }) {
       id: user.id,
       full_name: fullName,
       document_id: documentId,
+      nickname: cleanNickname,
       role: assignedRole,
+      kyc_status: 'none',
       created_at: new Date().toISOString()
     };
 
@@ -237,6 +241,230 @@ export async function verifyAndCreditDeposit({ userId, txHash, network, amountUs
   }
 
   return rpcData;
+}
+
+// ----------------------------------------------------
+// KYC VERIFICATION & PUBLIC EXPLORER
+// ----------------------------------------------------
+
+export async function submitKycVerification(payload) {
+  const {
+    userId,
+    fullName,
+    birthDate,
+    documentId,
+    addressCountry,
+    addressState,
+    addressCity,
+    bep20Wallet,
+    idDocumentUrl,
+    rifDocumentUrl,
+    selfieUrl
+  } = payload;
+
+  const dbPayload = {
+    user_id: userId,
+    full_name: fullName,
+    birth_date: birthDate,
+    document_id: documentId,
+    address_country: addressCountry,
+    address_state: addressState,
+    address_city: addressCity,
+    bep20_wallet: bep20Wallet,
+    id_document_url: idDocumentUrl,
+    rif_document_url: rifDocumentUrl,
+    selfie_url: selfieUrl,
+    status: 'pending',
+    updated_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabase
+    .from('kyc_verifications')
+    .upsert(dbPayload, { onConflict: 'user_id' })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error enviando KYC a Supabase:', error);
+    throw new Error(error.message || 'Error al guardar la solicitud KYC.');
+  }
+
+  // Actualizar estado del perfil del usuario a 'pending' y guardar wallet BEP20
+  await supabase
+    .from(TABLES.PROFILES)
+    .update({ 
+      kyc_status: 'pending',
+      bep20_wallet: bep20Wallet
+    })
+    .eq('id', userId);
+
+  return data;
+}
+
+export async function fetchKycVerifications() {
+  const { data, error } = await supabase
+    .from('kyc_verifications')
+    .select(`
+      *,
+      profile:profiles(*)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('Error al obtener verificaciones KYC:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+export async function reviewKycVerification({ kycId, userId, status, rejectionReason = '' }) {
+  const { data, error } = await supabase
+    .from('kyc_verifications')
+    .update({
+      status,
+      rejection_reason: rejectionReason,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', kycId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Error al actualizar estado KYC: ${error.message}`);
+  }
+
+  // Actualizar kyc_status en public.profiles
+  await supabase
+    .from(TABLES.PROFILES)
+    .update({ kyc_status: status })
+    .eq('id', userId);
+
+  return data;
+}
+
+/**
+ * Buscador Público y Transparente por Signed Contract Hash.
+ * Muestra el Apodo/username único (NUNCA el nombre real), el activo, el precio y el % de participación.
+ */
+export async function searchPublicContractHash(contractHash) {
+  const cleanHash = (contractHash || '').trim();
+  if (!cleanHash) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('rwa_purchases_view')
+      .select('*')
+      .ilike('tx_hash', `%${cleanHash}%`)
+      .limit(1);
+
+    if (!error && data && data.length > 0) {
+      const item = data[0];
+      return {
+        txHash: item.tx_hash,
+        nickname: item.investor_nickname || 'Inversor_Confidencial',
+        assetTitle: item.asset_title || 'Activo RWA',
+        amountInvestedUsdt: item.amount_invested_usdt,
+        sharesPercentage: item.shares_percentage,
+        purchasedAt: item.purchased_at,
+        assetImages: item.asset_images
+      };
+    }
+  } catch (_err) {
+    // Fallback a consulta en asset_shares + profiles
+  }
+
+  const { data: shares, error: shareErr } = await supabase
+    .from(TABLES.ASSET_SHARES)
+    .select(`
+      *,
+      asset:assets(*),
+      profile:profiles(nickname)
+    `)
+    .ilike('signed_contract_hash', `%${cleanHash}%`)
+    .limit(1);
+
+  if (shareErr || !shares || shares.length === 0) {
+    return null;
+  }
+
+  const s = shares[0];
+  return {
+    txHash: s.signed_contract_hash,
+    nickname: s.profile?.nickname || 'Inversor_Confidencial',
+    assetTitle: s.asset?.title || 'Activo RWA',
+    amountInvestedUsdt: s.amount_invested_usdt,
+    sharesPercentage: s.shares_percentage,
+    purchasedAt: s.purchased_at,
+    assetImages: s.asset?.images
+  };
+}
+
+/**
+ * Buscador Público por Apodo / Username Único.
+ * Muestra el portafolio público confidencial (Total invertido en USDT, nombres de activos y cantidad de fracciones poseídas).
+ */
+export async function searchPublicUserPortfolio(nickname) {
+  const cleanNickname = (nickname || '').trim().replace(/^@/, '');
+  if (!cleanNickname) return null;
+
+  // 1. Buscar perfil por nickname
+  const { data: profiles, error: profErr } = await supabase
+    .from(TABLES.PROFILES)
+    .select('id, nickname, kyc_status, created_at')
+    .ilike('nickname', cleanNickname)
+    .limit(1);
+
+  if (profErr || !profiles || profiles.length === 0) {
+    return null;
+  }
+
+  const prof = profiles[0];
+
+  // 2. Buscar compras del usuario
+  const { data: shares, error: shareErr } = await supabase
+    .from(TABLES.ASSET_SHARES)
+    .select(`
+      *,
+      asset:assets(*)
+    `)
+    .eq('user_id', prof.id);
+
+  if (shareErr) {
+    console.warn('Error al obtener portafolio público:', shareErr.message);
+  }
+
+  const userShares = shares || [];
+  const totalInvestedUsdt = userShares.reduce((acc, curr) => acc + Number(curr.amount_invested_usdt || 0), 0);
+  
+  // Agrupar por activo
+  const holdingsMap = {};
+  userShares.forEach(s => {
+    const assetId = s.asset_id || s.asset?.id;
+    const title = s.asset?.title || 'Activo RWA';
+    if (!holdingsMap[assetId]) {
+      holdingsMap[assetId] = {
+        assetId,
+        title,
+        category: s.asset?.category,
+        totalInvested: 0,
+        sharesPercentageSum: 0,
+        fractionCount: 0,
+        image: s.asset?.images?.[0]
+      };
+    }
+    holdingsMap[assetId].totalInvested += Number(s.amount_invested_usdt || 0);
+    holdingsMap[assetId].sharesPercentageSum += Number(s.shares_percentage || 0);
+    holdingsMap[assetId].fractionCount += 1;
+  });
+
+  return {
+    nickname: prof.nickname,
+    kycVerified: prof.kyc_status === 'approved',
+    memberSince: prof.created_at,
+    totalInvestedUsdt,
+    totalHoldingsCount: Object.keys(holdingsMap).length,
+    holdings: Object.values(holdingsMap)
+  };
 }
 
 // ----------------------------------------------------

@@ -6,6 +6,8 @@ import InvestmentModal from './components/InvestmentModal';
 import MyInvestmentsView from './components/MyInvestmentsView';
 import GovernanceView from './components/GovernanceView';
 import AdminPanel from './components/AdminPanel';
+import PublicExplorerView from './components/PublicExplorerView';
+import KycVerificationModal from './components/KycVerificationModal';
 import { 
   getCurrentSession, 
   getUserProfile, 
@@ -25,6 +27,7 @@ export default function App() {
   const [userShares, setUserShares]               = useState([]);
   const [loading, setLoading]                     = useState(true);
   const [showAuthModal, setShowAuthModal]         = useState(false);
+  const [showKycModal, setShowKycModal]           = useState(false);
   const [selectedInvestAsset, setSelectedInvestAsset] = useState(null);
 
   // ── Inicialización ──────────────────────────────────────────────────────────
@@ -183,6 +186,7 @@ export default function App() {
         onOpenAuth={() => setShowAuthModal(true)}
         onSignOut={handleSignOut}
         onDepositUsdt={handleDepositUsdt}
+        onOpenKyc={() => setShowKycModal(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
@@ -215,6 +219,11 @@ export default function App() {
                 onOpenAuth={() => setShowAuthModal(true)}
                 isLoggedIn={!!userProfile}
               />
+            )}
+
+            {/* Vista: Buscador Público y Transparente */}
+            {currentTab === 'explorer' && (
+              <PublicExplorerView />
             )}
 
             {/* Vista: Mis Inversiones */}
@@ -280,6 +289,14 @@ export default function App() {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onAuthSuccess={handleAuthSuccess}
+      />
+
+      {/* KYC Verification Modal */}
+      <KycVerificationModal
+        isOpen={showKycModal}
+        onClose={() => setShowKycModal(false)}
+        userProfile={userProfile}
+        onSuccess={handleRefreshAssets}
       />
 
       {/* Investment Modal */}

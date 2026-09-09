@@ -180,6 +180,11 @@ export default function InvestmentModal({ asset, userProfile, wallet, onClose, o
     e.preventDefault();
     setErrorMsg('');
 
+    if (userProfile?.kyc_status !== 'approved') {
+      setErrorMsg('🔒 Requisito KYC Obligatorio: Para adquirir fracciones RWA debes estar verificado por el administrador. Por favor completa tu Verificación KYC.');
+      return;
+    }
+
     if (isSoldOut) {
       setErrorMsg('El activo está agotado. No se aceptan más pagos.');
       return;

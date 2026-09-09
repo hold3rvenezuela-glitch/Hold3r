@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, ShieldAlert, CheckCircle2, RefreshCw, Sliders, ArrowRight, HelpCircle, Upload, Loader2, X, Shield, Trash2, Plus, Users, TrendingUp, Search, Filter, FileText, ExternalLink, Download, Copy, Check } from 'lucide-react';
-import { createAsset, updateAssetStatus, deleteAsset, uploadMultipleAssetImages, fetchAllPurchases } from '../services/api';
+import { createAsset, updateAssetStatus, deleteAsset, uploadMultipleAssetImages, fetchAllPurchases, fetchKycVerifications, reviewKycVerification } from '../services/api';
 import { generateCorporateContractPDF } from './MyInvestmentsView';
 
 export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefresh, onViewCatalog }) {
@@ -18,9 +18,16 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
   const [selectedAdminContractShare, setSelectedAdminContractShare] = useState(null);
   const [copiedAdminHash, setCopiedAdminHash] = useState(false);
 
+  // KYC Verifications State
+  const [kycList, setKycList] = useState([]);
+  const [loadingKyc, setLoadingKyc] = useState(false);
+  const [selectedKycPhoto, setSelectedKycPhoto] = useState(null);
+
   useEffect(() => {
     if (activeTab === 'purchases') {
       loadPurchasesHistory();
+    } else if (activeTab === 'kyc') {
+      loadKycVerifications();
     }
   }, [activeTab]);
 
@@ -33,6 +40,28 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
       console.error('Error al cargar historial de compras:', err);
     } finally {
       setLoadingPurchases(false);
+    }
+  };
+
+  const loadKycVerifications = async () => {
+    setLoadingKyc(true);
+    try {
+      const data = await fetchKycVerifications();
+      setKycList(data || []);
+    } catch (err) {
+      console.error('Error al cargar verificaciones KYC:', err);
+    } finally {
+      setLoadingKyc(false);
+    }
+  };
+
+  const handleReviewKyc = async (kycId, userId, status, reason = '') => {
+    try {
+      await reviewKycVerification({ kycId, userId, status, rejectionReason: reason });
+      setSuccessMsg(`Estado KYC actualizado a "${status === 'approved' ? 'Aprobado' : 'Rechazado'}" exitosamente.`);
+      loadKycVerifications();
+    } catch (err) {
+      setErrorMsg(err.message || 'Error al actualizar revisión KYC.');
     }
   };
 
@@ -424,6 +453,16 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
             }`}
           >
             <FileText className="w-3.5 h-3.5" /> Historial de Compras RWA ({purchasesList.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('kyc')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'kyc'
+                ? 'bg-emerald-500 text-neutral-950 shadow-md'
+                : 'text-neutral-400 hover:text-white'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" /> Verificaciones KYC ({kycList.filter(k => k.status === 'pending').length})
           </button>
         </div>
       </div>
@@ -1401,6 +1440,182 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
         </div>
       )}
 
+      {/* ── TAB 3: MÓDULO DE VERIFICACIÓN Y APROBACIÓN KYC ── */}
+      {activeTab === 'kyc' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-neutral-900 border border-neutral-800">
+            <div>
+              <h3 className="text-sm font-extrabold text-white uppercase font-mono flex items-center gap-2">
+                <Shield className="w-4 h-4 text-emerald-400" /> Solicitudes de Verificación KYC
+              </h3>
+              <p className="text-xs text-neutral-400">
+                Revisa los documentos legales y la foto selfie en vivo de los usuarios para aprobar o rechazar su capacidad de inversión.
+              </p>
+            </div>
+            <button
+              onClick={loadKycVerifications}
+              className="btn-secondary text-xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingKyc ? 'animate-spin' : ''}`} /> Refrescar Solicitudes
+            </button>
+          </div>
+
+          {loadingKyc ? (
+            <div className="p-12 text-center text-xs font-mono text-neutral-400 bg-neutral-900/50 rounded-2xl border border-neutral-800">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-400" />
+              Cargando solicitudes KYC desde Supabase...
+            </div>
+          ) : kycList.length === 0 ? (
+            <div className="p-12 text-center text-xs text-neutral-400 bg-neutral-900/40 rounded-2xl border border-neutral-800">
+              <CheckCircle2 className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
+              <p className="font-bold text-white text-sm">No hay solicitudes KYC registradas</p>
+              <p className="mt-1">Las nuevas verificaciones enviadas por usuarios aparecerán aquí para tu revisión.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6">
+              {kycList.map(item => {
+                const isPending = item.status === 'pending';
+                const isApproved = item.status === 'approved';
+                const isRejected = item.status === 'rejected';
+
+                return (
+                  <div
+                    key={item.id}
+                    className="p-5 rounded-2xl space-y-4 transition-all"
+                    style={{ 
+                      background: '#111715', 
+                      border: isPending ? '1px solid rgba(234,179,8,0.4)' : isApproved ? '1px solid rgba(0,255,136,0.3)' : '1px solid rgba(239,68,68,0.3)' 
+                    }}
+                  >
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-neutral-800 pb-3 gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-base font-extrabold text-white">{item.full_name}</h4>
+                          <span className="text-xs font-mono text-emerald-400 font-bold">
+                            @{item.profile?.nickname || 'apodo_no_definido'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-400 font-mono mt-0.5">
+                          Cédula: <strong>{item.document_id}</strong> · Nacimiento: <strong>{item.birth_date}</strong>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase ${
+                          isPending ? 'bg-amber-950 text-amber-400 border border-amber-800' :
+                          isApproved ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+                          'bg-red-950 text-red-400 border border-red-800'
+                        }`}>
+                          {isPending ? '● Pendiente Revisión' : isApproved ? '✓ KYC Aprobado' : '✕ KYC Rechazado'}
+                        </span>
+
+                        {isPending && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleReviewKyc(item.id, item.user_id, 'approved')}
+                              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold rounded-lg transition-all"
+                            >
+                              ✓ Aprobar KYC
+                            </button>
+                            <button
+                              onClick={() => {
+                                const reason = prompt('Indica el motivo de rechazar esta solicitud KYC:');
+                                if (reason) handleReviewKyc(item.id, item.user_id, 'rejected', reason);
+                              }}
+                              className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/40 text-xs font-bold rounded-lg transition-all"
+                            >
+                              ✕ Rechazar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Detalles de Ubicación y Wallet BEP20 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono bg-neutral-950/60 p-3 rounded-xl border border-neutral-800">
+                      <div>
+                        <span className="text-neutral-400 block text-[10px] uppercase">Dirección de Vivienda:</span>
+                        <strong className="text-neutral-200">{item.address_city}, Estado {item.address_state}, {item.address_country}</strong>
+                      </div>
+                      <div>
+                        <span className="text-neutral-400 block text-[10px] uppercase">Wallet BEP20 para Ganancias:</span>
+                        <strong className="text-emerald-400 break-all">{item.bep20_wallet}</strong>
+                      </div>
+                    </div>
+
+                    {/* Galería de Documentos y Selfie */}
+                    <div>
+                      <span className="text-[10px] text-neutral-400 uppercase font-mono block mb-2 font-bold">
+                        Documentos Cargados y Foto Selfie en Vivo:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Cédula */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-neutral-400 font-mono">1. Foto de Cédula</span>
+                          <div 
+                            onClick={() => setSelectedKycPhoto(item.id_document_url)}
+                            className="h-32 rounded-xl overflow-hidden border border-neutral-700 bg-black cursor-pointer group relative"
+                          >
+                            <img src={item.id_document_url} alt="Cédula" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
+                              Ampliar Foto
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* RIF */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-neutral-400 font-mono">2. Foto de RIF</span>
+                          <div 
+                            onClick={() => setSelectedKycPhoto(item.rif_document_url)}
+                            className="h-32 rounded-xl overflow-hidden border border-neutral-700 bg-black cursor-pointer group relative"
+                          >
+                            <img src={item.rif_document_url} alt="RIF" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
+                              Ampliar Foto
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Selfie Cámara */}
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-emerald-400 font-mono font-bold">3. Selfie en Vivo (Cámara)</span>
+                          <div 
+                            onClick={() => setSelectedKycPhoto(item.selfie_url)}
+                            className="h-32 rounded-xl overflow-hidden border border-emerald-500/50 bg-black cursor-pointer group relative"
+                          >
+                            <img src={item.selfie_url} alt="Selfie" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold text-white transition-opacity">
+                              Ampliar Foto
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Lightbox para fotos KYC */}
+          {selectedKycPhoto && (
+            <div 
+              className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+              onClick={() => setSelectedKycPhoto(null)}
+            >
+              <div className="relative max-w-3xl max-h-[90vh] rounded-2xl overflow-hidden border border-white/20">
+                <button
+                  onClick={() => setSelectedKycPhoto(null)}
+                  className="absolute top-3 right-3 p-2 bg-neutral-900/80 text-white rounded-full font-bold"
+                >✕</button>
+                <img src={selectedKycPhoto} alt="Documento KYC" className="w-full h-full object-contain max-h-[85vh]" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── MODAL VISOR DE CERTIFICADO JURÍDICO DESDE PANEL DE ADMIN ── */}
       {selectedAdminContractShare && (() => {
         const item = selectedAdminContractShare;
@@ -1469,7 +1684,7 @@ export default function AdminPanel({ assets, userProfile, onAssetCreated, onRefr
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-neutral-950/80 p-3.5 rounded-xl border border-white/5 font-mono text-[11px]">
                     <div><span className="text-neutral-400 block">Nombre Completo del Inversor:</span> <strong className="text-white">{profile.full_name || 'Inversionista Autenticado'}</strong></div>
                     <div><span className="text-neutral-400 block">Documento de Identidad / RIF:</span> <strong className="text-white">{profile.document_id || 'V-00000000'}</strong></div>
-                    <div><span className="text-neutral-400 block">ID de Usuario Supabase:</span> <strong className="text-white truncate block">{item.user_id || 'AUTH-SESSION'}</strong></div>
+                    <div><span className="text-neutral-400 block">ID de Usuario:</span> <strong className="text-emerald-400 font-bold truncate block">@{profile.nickname || 'inversor'}</strong></div>
                     <div><span className="text-neutral-400 block">Estado Jurídico:</span> <strong className="text-emerald-400">Titular Validado y Habilitado (KYC)</strong></div>
                   </div>
                 </div>

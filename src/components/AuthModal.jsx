@@ -10,6 +10,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
   // Form State
   const [fullName, setFullName]     = useState('');
   const [documentId, setDocumentId] = useState('');
+  const [nickname, setNickname]     = useState('');
   const [email, setEmail]           = useState('');
   const [password, setPassword]     = useState('');
 
@@ -22,10 +23,14 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
     try {
       if (isSignUp) {
-        if (!fullName || !documentId || !email || !password) {
-          throw new Error('Por favor completa todos los campos requeridos.');
+        if (!fullName || !documentId || !email || !password || !nickname) {
+          throw new Error('Por favor completa todos los campos, incluyendo tu Apodo confidencial.');
         }
-        const res = await signUpUser({ email, password, fullName, documentId });
+        const cleanNick = nickname.trim().replace(/^@/, '');
+        if (cleanNick.length < 3) {
+          throw new Error('El apodo o usuario único debe tener al menos 3 caracteres.');
+        }
+        const res = await signUpUser({ email, password, fullName, documentId, nickname: cleanNick });
         onAuthSuccess(res.profile);
       } else {
         if (!email || !password) {
@@ -157,6 +162,28 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
                     className="w-full py-2.5 pl-10 pr-3 text-xs rounded-xl font-mono"
                   />
                 </div>
+              </div>
+
+              {/* Apodo / Username Único (Privacidad Explorer) */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold" style={{ color: '#a1a1a1' }}>
+                    Apodo / Username Único
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-mono">🔒 Protege tu Privacidad</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-2.5 text-xs font-bold text-emerald-400 font-mono">@</span>
+                  <input
+                    type="text" required value={nickname}
+                    onChange={e => setNickname(e.target.value)}
+                    placeholder="ej_cripto_inversor"
+                    className="w-full py-2.5 pl-8 pr-3 text-xs rounded-xl font-mono"
+                  />
+                </div>
+                <p className="text-[10px] mt-1 text-neutral-400">
+                  Este nombre de usuario será visible en el buscador público de inversiones. Tu nombre real nunca se revelará.
+                </p>
               </div>
             </>
           )}

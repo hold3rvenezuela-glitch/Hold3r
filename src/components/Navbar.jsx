@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Shield, Wallet, PlusCircle, User, LogOut, Layers, Vote, 
-  Building2, Globe, ExternalLink, Check, RefreshCw, Menu, X, Sparkles
+  Building2, Globe, ExternalLink, Check, RefreshCw, Menu, X, Sparkles, ShieldCheck, UserCheck
 } from 'lucide-react';
 import { useWeb3ModalAccount } from '@web3modal/ethers/react';
 import Web3WalletModal from './Web3WalletModal';
@@ -9,7 +9,7 @@ import DepositModal from './DepositModal';
 
 export default function Navbar({ 
   currentTab, setCurrentTab, userProfile, wallet, 
-  onOpenAuth, onSignOut, onDepositUsdt 
+  onOpenAuth, onSignOut, onDepositUsdt, onOpenKyc
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -28,6 +28,7 @@ export default function Navbar({
 
   const navItems = [
     { id: 'investor', Icon: Building2, label: 'Explorar Activos' },
+    { id: 'explorer', Icon: ShieldCheck, label: 'Buscador Público' },
     ...(userProfile ? [{ id: 'my-investments', Icon: Layers, label: 'Mis Inversiones' }] : []),
     { id: 'governance', Icon: Vote, label: 'Gobernanza' },
     ...(userProfile?.role === 'admin' ? [{ id: 'admin', Icon: PlusCircle, label: 'Admin' }] : []),
@@ -170,7 +171,10 @@ export default function Navbar({
                         {/* Header Profile */}
                         <div className="p-3.5 border-b border-white/[0.07]">
                           <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#6b7280' }}>Sesión Activa</p>
-                          <p className="text-sm font-bold text-white truncate">{userProfile.full_name}</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-bold text-white truncate">{userProfile.full_name}</p>
+                            <span className="text-xs font-mono font-bold text-emerald-400">@{userProfile.nickname || 'apodo'}</span>
+                          </div>
                           <div className="flex items-center gap-1.5 mt-1.5">
                             <span className="font-mono text-[10px] px-2 py-0.5 rounded" style={{ color: '#00FF88', background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.20)' }}>
                               {userProfile.document_id}
@@ -178,6 +182,26 @@ export default function Navbar({
                             <span className={userProfile.role === 'admin' ? 'badge-role-admin' : 'badge-role-investor'}>
                               {userProfile.role}
                             </span>
+                          </div>
+                          
+                          {/* Botón / Badge KYC */}
+                          <div className="mt-2.5 pt-2 border-t border-neutral-800">
+                            <button
+                              onClick={() => { if (onOpenKyc) onOpenKyc(); setShowProfileMenu(false); }}
+                              className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-mono font-bold flex items-center justify-between transition-all ${
+                                userProfile.kyc_status === 'approved'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                  : userProfile.kyc_status === 'pending'
+                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                                  : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                {userProfile.kyc_status === 'approved' ? '✓ KYC Verificado' : userProfile.kyc_status === 'pending' ? '⏱️ KYC Pendiente' : '🔒 Solicitar KYC'}
+                              </span>
+                              <span className="text-[10px] opacity-75">›</span>
+                            </button>
                           </div>
                         </div>
 

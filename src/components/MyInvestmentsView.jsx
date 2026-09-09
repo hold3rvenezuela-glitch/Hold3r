@@ -70,9 +70,10 @@ export function generateCorporateContractPDF({ share, userProfile, asset, purcha
   doc.text(`${docId}`, 65, 77);
 
   doc.setFont('helvetica', 'normal');
-  doc.text(`ID de Usuario Supabase:`, 18, 84);
+  doc.text(`ID de Usuario:`, 18, 84);
   doc.setFont('helvetica', 'bold');
-  doc.text(`${userId}`, 55, 84);
+  const displayNick = userProfile?.nickname ? `@${userProfile.nickname}` : `@${(name || 'inversor').toLowerCase().replace(/\s+/g, '_')}`;
+  doc.text(`${displayNick}`, 45, 84);
 
   doc.setFont('helvetica', 'normal');
   doc.text(`Estado del Titular:`, 18, 91);
@@ -463,7 +464,7 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-neutral-950/80 p-3.5 rounded-xl border border-white/5 font-mono text-[11px]">
                     <div><span className="text-neutral-400 block">Nombre Completo del Inversor:</span> <strong className="text-white">{userProfile?.full_name || 'Inversionista Autenticado'}</strong></div>
                     <div><span className="text-neutral-400 block">Documento de Identidad / RIF:</span> <strong className="text-white">{userProfile?.document_id || 'V-00000000'}</strong></div>
-                    <div><span className="text-neutral-400 block">ID de Usuario Supabase:</span> <strong className="text-white truncate block">{userProfile?.id || 'AUTH-SESSION'}</strong></div>
+                    <div><span className="text-neutral-400 block">ID de Usuario:</span> <strong className="text-emerald-400 font-bold truncate block">@{userProfile?.nickname || 'inversor'}</strong></div>
                     <div><span className="text-neutral-400 block">Estado Jurídico:</span> <strong className="text-emerald-400">Titular Validado y Habilitado (KYC)</strong></div>
                   </div>
                 </div>
