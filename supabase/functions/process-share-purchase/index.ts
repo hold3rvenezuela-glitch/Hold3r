@@ -9,7 +9,16 @@ const RPC_NODES: Record<string, string> = {
 };
 
 // Dirección del Contrato HOLD3R_ERC1155 en BSC
-const HOLD3R_ERC1155_ADDRESS = Deno.env.get('HOLD3R_ERC1155_ADDRESS') || '0x892a0134F4733077C06497B001F0b82C8987b59E';
+const RAW_ERC1155_ADDRESS = Deno.env.get('HOLD3R_ERC1155_ADDRESS') || '0x892a0134F4733077C06497B001F0b82C8987b59E';
+
+// Formatear dirección con ethers.utils.getAddress sin riesgo de error por bad address checksum
+function getValidAddress(addrStr: string): string {
+  try {
+    return ethers.utils.getAddress(addrStr);
+  } catch (_e) {
+    return ethers.utils.getAddress(addrStr.toLowerCase());
+  }
+}
 
 // ABI Mínimo para purchaseShares en HOLD3R_ERC1155
 const ERC1155_ABI = [
@@ -137,16 +146,19 @@ serve(async (req) => {
       );
     }
 
+    // Formatear dirección del contrato inteligente con Ethers getAddress (evita bad address checksum)
+    const hold3rContractAddress = getValidAddress(RAW_ERC1155_ADDRESS);
+
     // Inicializar proveedor y monedero relayer con Ethers v5
     const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
     const relayerWallet = new ethers.Wallet(relayerPrivateKey, provider);
-    const contract = new ethers.Contract(HOLD3R_ERC1155_ADDRESS, ERC1155_ABI, relayerWallet);
+    const contract = new ethers.Contract(hold3rContractAddress, ERC1155_ABI, relayerWallet);
 
     // Determinar Token ID numérico del activo RWA
     const tokenId = customTokenId || asset.tokenId || asset.token_id || 1;
     const count = Number(shareCount) || 1;
 
-    console.log(`Enviando transacción relayer a BSC. Contrato: ${HOLD3R_ERC1155_ADDRESS}, TokenId: ${tokenId}, Shares: ${count}, Relayer: ${relayerWallet.address}`);
+    console.log(`Enviando transacción relayer a BSC. Contrato: ${hold3rContractAddress}, TokenId: ${tokenId}, Shares: ${count}, Relayer: ${relayerWallet.address}`);
 
     // Enviar transacción relayer a la BSC
     let tx;
