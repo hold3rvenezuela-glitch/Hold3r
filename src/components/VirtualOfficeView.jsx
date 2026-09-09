@@ -558,90 +558,101 @@ export default function VirtualOfficeView({
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* ── CABECERA ESTILO PERFIL SOCIAL ── */}
+      {/* ── CABECERA ESTILO PERFIL SOCIAL COMPACTO ── */}
       <div
-        className="relative rounded-3xl overflow-hidden p-6"
+        className="relative rounded-2xl overflow-hidden p-4 sm:p-5"
         style={{ background: 'linear-gradient(145deg, #0f1c18 0%, #0B0F0E 60%)', border: '1px solid rgba(0,255,136,0.15)' }}
       >
         {/* Fondo decorativo */}
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-[0.04]" style={{ background: 'radial-gradient(circle, #00FF88, transparent)', transform: 'translate(30%, -30%)' }} />
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-[0.04] pointer-events-none" style={{ background: 'radial-gradient(circle, #00FF88, transparent)', transform: 'translate(30%, -30%)' }} />
 
-        <div className="relative flex flex-col sm:flex-row items-center sm:items-start gap-5">
-          {/* Avatar editable */}
-          <div className="relative shrink-0">
-            <div
-              className="w-24 h-24 rounded-2xl overflow-hidden cursor-pointer border-2 border-emerald-500/40 hover:border-emerald-400/70 transition-all group"
-              onClick={() => fileInputRef.current?.click()}
-              title="Cambiar foto de perfil"
-            >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-3xl font-black text-emerald-400" style={{ background: 'rgba(0,255,136,0.10)' }}>
-                  {userProfile?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+        <div className="relative flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          
+          {/* Lado izquierdo: Avatar + Info Usuario */}
+          <div className="flex items-center gap-4 min-w-0">
+            {/* Avatar editable */}
+            <div className="relative shrink-0">
+              <div
+                className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl overflow-hidden cursor-pointer border-2 border-emerald-500/40 hover:border-emerald-400/80 transition-all group shadow-lg shadow-emerald-950/40"
+                onClick={() => fileInputRef.current?.click()}
+                title="Cambiar foto de perfil"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-2xl font-black text-emerald-400" style={{ background: 'rgba(0,255,136,0.10)' }}>
+                    {userProfile?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                  </div>
+                )}
+                {/* Overlay cámara */}
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  {uploadingAvatar
+                    ? <Loader2 className="w-4 h-4 text-white animate-spin" />
+                    : <Camera className="w-4 h-4 text-white" />}
                 </div>
-              )}
-              {/* Overlay cámara */}
-              <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                {uploadingAvatar
-                  ? <Loader2 className="w-5 h-5 text-white animate-spin" />
-                  : <Camera className="w-5 h-5 text-white" />}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
+            </div>
+
+            {/* Info textual compacta */}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">{userProfile?.full_name}</h1>
+                <KycBadge status={userProfile?.kyc_status} />
+              </div>
+
+              <div className="flex items-center gap-2 mt-0.5 text-xs font-mono">
+                <span className="text-emerald-400 font-semibold">@{userProfile?.nickname || 'usuario'}</span>
+                <span className="text-neutral-600">·</span>
+                <span className="text-neutral-400">ID: <strong className="text-neutral-200">{userProfile?.document_id}</strong></span>
+              </div>
+
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap text-[11px] font-mono text-neutral-400">
+                <span className="px-2 py-0.5 rounded-md bg-neutral-900/80 border border-neutral-800 text-neutral-300 capitalize">
+                  {userProfile?.role === 'admin' ? '🛡️ Admin' : '👤 Inversor'}
+                </span>
+                <span>Miembro desde {userProfile?.created_at ? new Date(userProfile.created_at).getFullYear() : '2026'}</span>
               </div>
             </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleAvatarChange}
-            />
           </div>
 
-          {/* Info del usuario */}
-          <div className="flex-1 text-center sm:text-left">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap justify-center sm:justify-start">
-              <h1 className="text-2xl font-black text-white">{userProfile?.full_name}</h1>
-              <KycBadge status={userProfile?.kyc_status} />
-            </div>
-
-            <p className="text-emerald-400 font-mono font-bold text-sm mt-1">
-              @{userProfile?.nickname || 'usuario'}
-            </p>
-
-            <div className="flex items-center gap-3 mt-2 flex-wrap justify-center sm:justify-start text-xs font-mono text-neutral-500">
-              <span>Cédula/RIF: <strong className="text-neutral-300">{userProfile?.document_id}</strong></span>
-              <span>·</span>
-              <span className="capitalize">{userProfile?.role === 'admin' ? '🛡️ Administrador' : '👤 Inversor'}</span>
-              <span>·</span>
-              <span>Miembro desde {userProfile?.created_at ? new Date(userProfile.created_at).getFullYear() : '—'}</span>
-            </div>
-
-            {/* Acciones rápidas */}
-            <div className="flex items-center gap-2 mt-3 flex-wrap justify-center sm:justify-start">
+          {/* Lado derecho: Acciones rápidas + Saldo USDT */}
+          <div className="flex items-center justify-between md:justify-end gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-neutral-800/80 shrink-0">
+            {/* Botones de acción */}
+            <div className="flex items-center gap-2">
               {userProfile?.kyc_status !== 'approved' && (
                 <button
                   onClick={onOpenKyc}
-                  className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-all"
+                  className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 active:scale-95 transition-all shadow-sm"
                 >
-                  🔒 Completar KYC
+                  🔒 KYC
                 </button>
               )}
               <button
                 onClick={onOpenDeposit}
-                className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-black hover:opacity-90 active:scale-95 transition-all shadow-md flex items-center gap-1.5"
+                style={{ background: '#00FF88' }}
               >
-                + Depositar USDT
+                <Wallet className="w-3.5 h-3.5" />
+                <span>+ Depositar USDT</span>
               </button>
+            </div>
+
+            {/* Tarjeta de Saldo */}
+            <div className="px-4 py-2 rounded-xl text-right" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.18)' }}>
+              <p className="text-[9px] text-emerald-400 uppercase tracking-wider font-bold">Saldo USDT</p>
+              <p className="text-lg font-extrabold text-white font-mono leading-tight">
+                ${Number(localWallet?.balance || wallet?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </p>
             </div>
           </div>
 
-          {/* Saldo rápido */}
-          <div className="shrink-0 text-center px-5 py-3 rounded-2xl" style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.18)' }}>
-            <p className="text-[10px] text-emerald-400 uppercase tracking-widest font-bold mb-0.5">Saldo USDT</p>
-            <p className="text-2xl font-black text-white font-mono">
-              ${Number(wallet?.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </p>
-          </div>
         </div>
       </div>
 

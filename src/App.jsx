@@ -294,7 +294,7 @@ export default function App() {
                 wallet={wallet}
                 assets={assets}
                 onProfileUpdated={updated => setUserProfile(prev => ({ ...prev, ...updated }))}
-                onOpenDeposit={() => { /* abre DepositModal via Navbar */ }}
+                onOpenDeposit={() => setShowDepositModal(true)}
                 onOpenKyc={() => setShowKycModal(true)}
               />
             )}
