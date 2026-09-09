@@ -1339,3 +1339,140 @@ export async function fetchWalletTransactions(userId) {
     return [];
   }
 }
+
+// ----------------------------------------------------
+// MERCADO SECUNDARIO & ESCROW & GOBERNANZA (48H)
+// ----------------------------------------------------
+
+/**
+ * Registra una solicitud de reventa e ingresa las acciones a la Bóveda (Escrow)
+ * en estado 'IN_REVIEW_GOVERNANCE' (48h Derecho de Tanteo).
+ */
+export async function createMarketplaceOrder({ sellerId, shareId, assetId, sharesPercentage, priceUsdt }) {
+  // Generar hash de bloqueo simulado / transferencia a Escrow
+  const escrowTxHash = '0xescrow_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 10);
+
+  const { data, error } = await supabase
+    .from(TABLES.MARKETPLACE_ORDERS)
+    .insert([
+      {
+        seller_id: sellerId,
+        share_id: shareId,
+        asset_id: assetId,
+        shares_percentage: Number(sharesPercentage),
+        price_usdt: Number(priceUsdt),
+        status: 'IN_REVIEW_GOVERNANCE',
+        escrow_tx_hash: escrowTxHash,
+        governance_expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      }
+    ])
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error al crear orden de reventa en el mercado:', error.message);
+    throw new Error('No se pudo registrar la solicitud de venta en el mercado.');
+  }
+
+  return data;
+}
+
+/**
+ * Obtiene las órdenes en fase de Gobernanza (Derecho de Tanteo 48h)
+ * visibles para socios y administradores. Promueve automáticamente expiradas a PUBLIC_MARKET.
+ */
+export async function fetchGovernanceMarketOrders() {
+  const { data, error } = await supabase
+    .from(TABLES.MARKETPLACE_ORDERS)
+    .select(`
+      *,
+      asset:assets (title, category, images, total_valuation),
+      seller:profiles!seller_id (full_name, document_id, avatar_url)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error al consultar ofertas de gobernanza:', error.message);
+    return [];
+  }
+
+  const now = new Date();
+  // Promoción automática de expiradas a PUBLIC_MARKET
+  return (data || []).map(order => {
+    if (order.status === 'IN_REVIEW_GOVERNANCE' && new Date(order.governance_expires_at) <= now) {
+      return { ...order, status: 'PUBLIC_MARKET' };
+    }
+    return order;
+  });
+}
+
+/**
+ * Obtiene las órdenes disponibles públicamente en el Mercado Secundario.
+ */
+export async function fetchPublicMarketOrders() {
+  const allOrders = await fetchGovernanceMarketOrders();
+  return allOrders.filter(o => o.status === 'PUBLIC_MARKET');
+}
+
+/**
+ * Ejecuta la compra atómica de una orden por parte de un Socio/Admin durante el periodo de 48h.
+ */
+export async function buyMarketplaceOrderInternal({ orderId, buyerId }) {
+  const completedTxHash = '0xint_buy_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 10);
+
+  const { data, error } = await supabase
+    .from(TABLES.MARKETPLACE_ORDERS)
+    .update({
+      status: 'SOLD_INTERNAL',
+      buyer_id: buyerId,
+      completed_tx_hash: completedTxHash,
+      completed_at: new Date().toISOString()
+    })
+    .eq('id', orderId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error('No se pudo completar la compra interna de la oferta: ' + error.message);
+  return data;
+}
+
+/**
+ * Ejecuta la compra pública en el Mercado Secundario por cualquier inversor verificado.
+ */
+export async function buyMarketplaceOrderPublic({ orderId, buyerId, txHash }) {
+  const completedTxHash = txHash || ('0xpub_buy_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 10));
+
+  const { data, error } = await supabase
+    .from(TABLES.MARKETPLACE_ORDERS)
+    .update({
+      status: 'SOLD_PUBLIC',
+      buyer_id: buyerId,
+      completed_tx_hash: completedTxHash,
+      completed_at: new Date().toISOString()
+    })
+    .eq('id', orderId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error('No se pudo procesar la compra en mercado público: ' + error.message);
+  return data;
+}
+
+/**
+ * Cancela una orden de venta activa devolviendo las acciones de la Bóveda al usuario.
+ */
+export async function cancelMarketplaceOrder({ orderId, sellerId }) {
+  const { data, error } = await supabase
+    .from(TABLES.MARKETPLACE_ORDERS)
+    .update({
+      status: 'CANCELLED'
+    })
+    .eq('id', orderId)
+    .eq('seller_id', sellerId)
+    .select('*')
+    .single();
+
+  if (error) throw new Error('No se pudo cancelar la orden de venta: ' + error.message);
+  return data;
+}
+

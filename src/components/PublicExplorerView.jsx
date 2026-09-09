@@ -320,6 +320,108 @@ export default function PublicExplorerView() {
           )}
         </div>
       )}
+
+      {/* ── SECCIÓN: MERCADO SECUNDARIO PÚBLICO (REVENTA Abierta) ── */}
+      <PublicSecondaryMarketSection />
+    </div>
+  );
+}
+
+function PublicSecondaryMarketSection() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [buyingOrderId, setBuyingOrderId] = useState(null);
+
+  const loadPublicOrders = async () => {
+    setLoading(true);
+    try {
+      const { fetchPublicMarketOrders } = await import('../services/api');
+      const data = await fetchPublicMarketOrders();
+      setOrders(data);
+    } catch (err) {
+      console.error('Error cargando mercado secundario público:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPublicOrders();
+  }, []);
+
+  const handleBuyPublic = async (order) => {
+    const { buyMarketplaceOrderPublic } = await import('../services/api');
+    setBuyingOrderId(order.id);
+    try {
+      await buyMarketplaceOrderPublic({ orderId: order.id, buyerId: 'PUBLIC-BUYER' });
+      alert('¡Compra en Mercado Público completada! Los tokens fueron liberados desde la Bóveda Escrow a tu cuenta.');
+      loadPublicOrders();
+    } catch (err) {
+      alert(err.message || 'Error en la compra pública.');
+    } finally {
+      setBuyingOrderId(null);
+    }
+  };
+
+  return (
+    <div className="p-6 rounded-2xl space-y-4 animate-fade-in" style={{ background: '#0e1714', border: '1px solid rgba(0,255,136,0.2)' }}>
+      <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+        <div>
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Layers className="w-5 h-5 text-emerald-400" /> Mercado Secundario Abierto (Reventa RWA)
+          </h3>
+          <p className="text-xs text-neutral-400">
+            Fracciones liberadas tras el periodo de tanteo de 48h, disponibles para adquisición pública.
+          </p>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-xs font-mono text-neutral-400 text-center py-6">Cargando mercado secundario...</p>
+      ) : orders.length === 0 ? (
+        <div className="p-6 rounded-xl bg-neutral-900/40 border border-neutral-800 text-center text-xs text-neutral-400">
+          No hay órdenes de reventa disponibles en el mercado público actualmente.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {orders.map(ord => (
+            <div key={ord.id} className="p-4 rounded-xl bg-neutral-900 border border-emerald-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30">
+                  MERCADO PÚBLICO
+                </span>
+                <span className="text-xs font-mono text-neutral-400">
+                  ID: #{ord.id.substring(0, 8)}
+                </span>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-white">{ord.asset?.title || 'Activo RWA'}</h4>
+                <p className="text-xs text-neutral-400">Vendedor: {ord.seller?.full_name}</p>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-black/40 border border-white/10 font-mono text-xs">
+                <div>
+                  <span className="text-[10px] text-neutral-400 block">Participación</span>
+                  <span className="text-white font-bold">{Number(ord.shares_percentage).toFixed(4)}%</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-neutral-400 block">Precio USDT</span>
+                  <span className="text-emerald-400 font-extrabold">${Number(ord.price_usdt).toLocaleString()} USDT</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleBuyPublic(ord)}
+                disabled={buyingOrderId === ord.id}
+                className="w-full btn-primary bg-emerald-500 text-black font-bold py-2 text-xs flex items-center justify-center gap-1"
+              >
+                {buyingOrderId === ord.id ? 'Comprando en Bóveda...' : 'Comprar Fracción (USDT)'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

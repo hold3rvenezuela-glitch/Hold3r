@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Vote, CheckCircle2, XCircle, Plus, Sparkles, MessageSquare, AlertCircle } from 'lucide-react';
-import { fetchProposals, castVote, createProposal } from '../services/api';
+import { Vote, CheckCircle2, XCircle, Plus, Sparkles, MessageSquare, AlertCircle, Clock, ShieldCheck, ShoppingCart, DollarSign, RefreshCw } from 'lucide-react';
+import { fetchProposals, castVote, createProposal, fetchGovernanceMarketOrders, buyMarketplaceOrderInternal } from '../services/api';
 
 export default function GovernanceView({ userProfile, assets }) {
   const [proposals, setProposals] = useState([]);
+  const [governanceOrders, setGovernanceOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [buyingOrderId, setBuyingOrderId] = useState(null);
   const [showNewModal, setShowNewModal] = useState(false);
 
   // Form State
@@ -12,6 +15,18 @@ export default function GovernanceView({ userProfile, assets }) {
   const [proposalTitle, setProposalTitle] = useState('');
   const [proposalDesc, setProposalDesc] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const loadGovernanceOrders = async () => {
+    setLoadingOrders(true);
+    try {
+      const orders = await fetchGovernanceMarketOrders();
+      setGovernanceOrders(orders);
+    } catch (err) {
+      console.error('Error al cargar ofertas de tanteo:', err);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
 
   const loadProposals = async () => {
     setLoading(true);
@@ -27,7 +42,25 @@ export default function GovernanceView({ userProfile, assets }) {
 
   useEffect(() => {
     loadProposals();
+    loadGovernanceOrders();
   }, []);
+
+  const handleBuyInternal = async (orderId) => {
+    if (!userProfile?.id) {
+      alert('Debes iniciar sesión como socio o administrador.');
+      return;
+    }
+    setBuyingOrderId(orderId);
+    try {
+      await buyMarketplaceOrderInternal({ orderId, buyerId: userProfile.id });
+      alert('¡Compra de la oferta interna completada con éxito! Los tokens fueron transferidos desde la Bóveda Escrow a tu wallet.');
+      loadGovernanceOrders();
+    } catch (err) {
+      alert(err.message || 'Error al procesar la compra interna.');
+    } finally {
+      setBuyingOrderId(null);
+    }
+  };
 
   const handleVote = async (proposalId, voteChoice) => {
     if (!userProfile?.id) {
@@ -94,6 +127,81 @@ export default function GovernanceView({ userProfile, assets }) {
             <Plus className="w-4 h-4" />
             Crear Propuesta de Votación
           </button>
+        )}
+      </div>
+
+      {/* ── SECCIÓN GOBERNANZA: DERECHO DE TANTEO 48H (OFERTAS INTERNAS) ── */}
+      <div className="p-6 rounded-2xl space-y-4 animate-fade-in" style={{ background: '#0e1714', border: '1px solid rgba(0,255,136,0.2)' }}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-neutral-800 pb-3 gap-2">
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-5 h-5 text-emerald-400" />
+            <div>
+              <h3 className="text-base font-bold text-white">Derecho de Tanteo (Ofertas Internas 48 Horas)</h3>
+              <p className="text-xs text-neutral-400">
+                Fracciones en Bóveda Escrow reservadas exclusivamente para adquisición por Socios y Administradores.
+              </p>
+            </div>
+          </div>
+          <button onClick={loadGovernanceOrders} className="btn-secondary text-[11px] py-1 px-3 flex items-center gap-1">
+            <RefreshCw className={`w-3 h-3 ${loadingOrders ? 'animate-spin' : ''}`} /> Refrescar
+          </button>
+        </div>
+
+        {loadingOrders ? (
+          <p className="text-xs font-mono text-neutral-400 py-4 text-center">Cargando órdenes en bóveda...</p>
+        ) : governanceOrders.filter(o => o.status === 'IN_REVIEW_GOVERNANCE').length === 0 ? (
+          <div className="p-4 rounded-xl bg-neutral-900/40 border border-neutral-800 text-center text-xs text-neutral-400">
+            No hay solicitudes de reventa en periodo de tanteo de 48 horas actualmente.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {governanceOrders.filter(o => o.status === 'IN_REVIEW_GOVERNANCE').map(ord => {
+              const expiresAt = new Date(ord.governance_expires_at);
+              const remainingMs = Math.max(0, expiresAt.getTime() - Date.now());
+              const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+              const remainingMins = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+
+              return (
+                <div key={ord.id} className="p-4 rounded-xl bg-neutral-900 border border-emerald-500/30 space-y-3 relative overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                      Bóveda Escrow #48H
+                    </span>
+                    <span className="text-xs font-mono font-bold text-amber-400 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" /> Expiración: {remainingHours}h {remainingMins}m
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-bold text-white">{ord.asset?.title || 'Activo RWA'}</h4>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Vendedor: <strong className="text-neutral-200">{ord.seller?.full_name}</strong> ({ord.seller?.document_id})
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-black/40 border border-white/10 font-mono text-xs">
+                    <div>
+                      <span className="text-[10px] text-neutral-400 block">Participación</span>
+                      <span className="text-white font-bold">{Number(ord.shares_percentage).toFixed(4)}%</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-neutral-400 block">Precio Solicitado</span>
+                      <span className="text-emerald-400 font-extrabold">${Number(ord.price_usdt).toLocaleString()} USDT</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleBuyInternal(ord.id)}
+                    disabled={buyingOrderId === ord.id}
+                    className="w-full btn-primary bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-2 text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    {buyingOrderId === ord.id ? 'Ejecutando Compra Interna...' : 'Ejercer Derecho de Tanteo (Comprar)'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

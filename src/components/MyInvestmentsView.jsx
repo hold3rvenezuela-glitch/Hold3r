@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText, X, Download, Copy, Check, Award, Shield, ArrowDownLeft, ArrowUpRight, Wallet, History } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { fetchUserShares, fetchUserWalletMovements } from '../services/api';
+import { fetchUserShares, fetchUserWalletMovements, createMarketplaceOrder } from '../services/api';
 
 export function generateCorporateContractPDF({ share, userProfile, asset, purchasedDate, txHash, numAmount }) {
   const doc = new jsPDF();
@@ -209,6 +209,10 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
   const [loadingMovements, setLoadingMovements] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedContractShare, setSelectedContractShare] = useState(null);
+  const [resaleShare, setResaleShare] = useState(null);
+  const [resalePrice, setResalePrice] = useState('');
+  const [publishingResale, setPublishingResale] = useState(false);
+  const [resaleSuccessMsg, setResaleSuccessMsg] = useState('');
   const [copiedHash, setCopiedHash] = useState(false);
   const [copiedMovementHashId, setCopiedMovementHashId] = useState(null);
 
@@ -396,12 +400,20 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
                     </a>
                   </div>
 
-                  <button
-                    onClick={() => setSelectedContractShare(share)}
-                    className="btn-secondary text-[11px] py-1.5 px-3 font-bold text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 w-full flex items-center justify-center gap-1.5"
-                  >
-                    <FileText className="w-3.5 h-3.5" /> Ver Certificado de Propiedad
-                  </button>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      onClick={() => setSelectedContractShare(share)}
+                      className="btn-secondary text-[11px] py-1.5 px-2 font-bold text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 flex items-center justify-center gap-1"
+                    >
+                      <FileText className="w-3.5 h-3.5" /> Certificado
+                    </button>
+                    <button
+                      onClick={() => setResaleShare(share)}
+                      className="btn-secondary text-[11px] py-1.5 px-2 font-bold text-amber-400 border-amber-500/30 hover:bg-amber-500/20 flex items-center justify-center gap-1"
+                    >
+                      <DollarSign className="w-3.5 h-3.5 text-amber-400" /> Revender
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -744,6 +756,117 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
           </div>
         );
       })()}
+
+      {/* ── MODAL SOLICITUD DE REVENTA EN BÓVEDA / ESCROW ── */}
+      {resaleShare && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fade-in">
+          <div className="glass-panel w-full max-w-md p-6 border border-amber-500/40 shadow-2xl relative my-auto text-white space-y-4">
+            <button
+              onClick={() => { setResaleShare(null); setResaleSuccessMsg(''); }}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-white font-bold"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Revender Fracciones RWA</h3>
+                <p className="text-xs text-neutral-400">Bloqueo en Bóveda Escrow y Tanteo 48h</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-neutral-900/90 border border-neutral-800 space-y-2 text-xs">
+              <p className="text-neutral-300">
+                Activo: <strong className="text-white">{resaleShare.asset?.title || 'Activo RWA'}</strong>
+              </p>
+              <p className="text-neutral-300">
+                Participación a Bloquear: <strong className="text-amber-400 font-mono">{Number(resaleShare.shares_percentage || 0).toFixed(4)}%</strong>
+              </p>
+              <p className="text-[11px] text-neutral-400 leading-relaxed">
+                🔒 Al confirmar, tus fracciones se transferirán a la <strong>Bóveda de Garantía Escrow</strong>. Permanecerán durante <strong>48 horas exactas</strong> en oferta interna para Socios/Admin antes de pasar al mercado público.
+              </p>
+            </div>
+
+            {resaleSuccessMsg ? (
+              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium space-y-2 text-center">
+                <p>✅ {resaleSuccessMsg}</p>
+                <button
+                  type="button"
+                  onClick={() => { setResaleShare(null); setResaleSuccessMsg(''); }}
+                  className="mt-2 btn-primary bg-emerald-500 text-black font-bold py-1.5 px-4 text-xs"
+                >
+                  Entendido
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!resalePrice || Number(resalePrice) <= 0) return;
+                  setPublishingResale(true);
+                  try {
+                    await createMarketplaceOrder({
+                      sellerId: userProfile.id,
+                      shareId: resaleShare.id,
+                      assetId: resaleShare.asset_id,
+                      sharesPercentage: resaleShare.shares_percentage,
+                      priceUsdt: resalePrice,
+                    });
+                    setResaleSuccessMsg('Orden enviada a Bóveda Escrow. En fase de tanteo interno (48h).');
+                    loadShares();
+                  } catch (err) {
+                    alert(err.message);
+                  } finally {
+                    setPublishingResale(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-300 mb-1.5">
+                    Precio de Venta Solicitado (USDT):
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-2.5 text-amber-400 font-mono font-bold">$</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      required
+                      value={resalePrice}
+                      onChange={e => setResalePrice(e.target.value)}
+                      placeholder="Monto en USDT"
+                      className="w-full bg-neutral-900 border border-neutral-700 focus:border-amber-500 text-white font-mono font-bold text-base rounded-xl py-2 pl-8 pr-16 outline-none"
+                    />
+                    <span className="absolute right-3.5 top-2.5 text-xs font-mono font-bold text-neutral-400">USDT</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setResaleShare(null)}
+                    className="btn-secondary text-xs py-2 px-4"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={publishingResale}
+                    className="btn-primary bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs py-2 px-5"
+                  >
+                    {publishingResale ? 'Bloqueando en Bóveda...' : 'Confirmar Venta en Bóveda'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
+
 }
