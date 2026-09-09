@@ -25,16 +25,6 @@ export function generateUsdtAddress(network = 'TRC20') {
   return addr;
 }
 
-// Helper para generar hash de contrato legal firmado en SHA256 simulado
-export function generateContractHash(assetId, userId, amount) {
-  const str = `HOLD3R-CONTRACT-${assetId}-${userId}-${amount}-${Date.now()}`;
-  let hash = '';
-  for (let i = 0; i < 64; i++) {
-    hash += Math.floor(Math.random() * 16).toString(16);
-  }
-  return '0x' + hash;
-}
-
 // ----------------------------------------------------
 // AUTH & PROFILES & WALLETS
 // ----------------------------------------------------
@@ -465,104 +455,45 @@ export async function investInAsset({ userId, wallet, asset, investmentUsdt, sig
     throw new Error(`El monto excede la meta de fondeo restante ($${(totalValuation - currentFunded).toLocaleString()} USDT)`);
   }
 
-  // Si NO viene un signedHash de transacción directa Web3, se utiliza el Backend Relayer para ejecutar la compra en BSC con saldo interno
+  // Si NO viene un signedHash de transacción directa Web3, se requiere obligatoriamente el Backend Relayer en BSC para saldo interno
   if (!signedHash) {
     if (Number(wallet?.balance || 0) < amountUsdt) {
       throw new Error(`Saldo insuficiente en tu billetera USDT ($${Number(wallet?.balance || 0).toLocaleString()} USDT disponible).`);
     }
 
-    try {
-      // 1. Invocar Edge Function de Supabase relayer 'process-share-purchase'
-      const { data: relayerRes, error: relayerErr } = await supabase.functions.invoke('process-share-purchase', {
-        body: {
-          userId,
-          assetId: asset.id,
-          amountUsdt: amountUsdt,
-          shareCount: 1,
-          network: 'BEP20'
-        }
-      });
-
-      if (!relayerErr && relayerRes && relayerRes.success) {
-        if (wallet) {
-          wallet.balance = relayerRes.newBalance;
-        }
-        return relayerRes.shareRecord || {
-          id: generateUUID(),
-          asset_id: asset.id,
-          user_id: userId,
-          shares_percentage: (amountUsdt / totalValuation) * 100,
-          amount_invested_usdt: amountUsdt,
-          signed_contract_hash: relayerRes.txHash,
-          purchased_at: new Date().toISOString(),
-          asset: asset
-        };
+    // Invocar Edge Function de Supabase relayer 'process-share-purchase'
+    const { data: relayerRes, error: relayerErr } = await supabase.functions.invoke('process-share-purchase', {
+      body: {
+        userId,
+        assetId: asset.id,
+        amountUsdt: amountUsdt,
+        shareCount: 1,
+        network: 'BEP20'
       }
+    });
 
-      if (relayerErr || (relayerRes && !relayerRes.success)) {
-        console.warn('Aviso de Edge Function Relayer (falló ejecucion on-chain):', relayerErr?.message || relayerRes?.error);
-      }
-    } catch (eErr) {
-      console.warn('Edge Function Relayer no disponible o error de red:', eErr);
+    if (relayerErr) {
+      throw new Error(`Falla de comunicación con el Backend Relayer: ${relayerErr.message || 'La Edge Function no respondió'}. La compra ha sido cancelada y no se ha descontado saldo.`);
     }
 
-    // 2. Fallback: Ejecución directa con consulta RPC al nodo BSC para capturar hash de bloque real
-    const validUserId = (userId && userId.length === 36) ? userId : '11111111-1111-4111-8111-111111111111';
-    const validAssetId = (asset.id && asset.id.length === 36) ? asset.id : generateUUID();
-
-    let realTxHash = '';
-    try {
-      const bscRes = await fetch('https://bsc-dataseed.binance.org/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBlockByNumber', params: ['latest', false] })
-      });
-      const bscData = await bscRes.json();
-      if (bscData?.result?.hash) {
-        realTxHash = bscData.result.hash;
-      }
-    } catch (bErr) {
-      console.warn('Error al consultar nodo BSC RPC:', bErr);
+    if (!relayerRes || !relayerRes.success || !relayerRes.txHash) {
+      throw new Error(relayerRes?.error || 'La transacción no pudo ser minada en la Binance Smart Chain (BSC). La compra ha sido cancelada y no se ha descontado saldo.');
     }
 
-    if (!realTxHash) {
-      throw new Error('La transacción on-chain en la blockchain BSC no pudo ser minada. La compra interna ha sido cancelada y no se ha descontado saldo.');
+    if (wallet) {
+      wallet.balance = relayerRes.newBalance;
     }
 
-    const sharesPercentage = (amountUsdt / totalValuation) * 100;
-    const sharePayload = {
-      asset_id: validAssetId,
-      user_id: validUserId,
-      shares_percentage: sharesPercentage,
+    return relayerRes.shareRecord || {
+      id: generateUUID(),
+      asset_id: asset.id,
+      user_id: userId,
+      shares_percentage: (amountUsdt / totalValuation) * 100,
       amount_invested_usdt: amountUsdt,
-      signed_contract_hash: realTxHash,
-      purchased_at: new Date().toISOString()
+      signed_contract_hash: relayerRes.txHash,
+      purchased_at: new Date().toISOString(),
+      asset: asset
     };
-
-    let shareData = null;
-    const { data, error } = await supabase
-      .from(TABLES.ASSET_SHARES)
-      .insert(sharePayload)
-      .select()
-      .single();
-
-    if (error) {
-      throw new Error(`Error de base de datos al guardar la compra: ${error.message}`);
-    }
-    shareData = data;
-
-    // Actualizar asset y wallet en Supabase
-    const newFundedAmount = currentFunded + amountUsdt;
-    const newStatus = newFundedAmount >= totalValuation ? 'active_rent' : asset.status;
-    await supabase.from(TABLES.ASSETS).update({ funded_amount: newFundedAmount, status: newStatus }).eq('id', validAssetId);
-
-    const newBalance = Number(wallet.balance) - amountUsdt;
-    if (wallet.id) {
-      await supabase.from(TABLES.WALLETS).update({ balance: newBalance, updated_at: new Date().toISOString() }).eq('id', wallet.id);
-    }
-    wallet.balance = newBalance;
-
-    return shareData;
   }
 
   // Si SI se pasó un signedHash (Pago Directo Web3 desde billetera de usuario)

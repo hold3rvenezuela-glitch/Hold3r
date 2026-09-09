@@ -92,45 +92,54 @@ serve(async (req) => {
     // ── 3. EJECUCIÓN EN BLOCKCHAIN BSC VÍA RELAYER (HOT WALLET) ──
     const netKey = (network as string).toUpperCase() === 'TESTNET' ? 'TESTNET' : 'BEP20';
     const rpcUrl = RPC_NODES[netKey];
-    const relayerPrivateKey = Deno.env.get('RELAYER_PRIVATE_KEY') || Deno.env.get('HOT_WALLET_PRIVATE_KEY');
+    const relayerPrivateKey = Deno.env.get('HOT_WALLET_PRIVATE_KEY') || Deno.env.get('RELAYER_PRIVATE_KEY');
 
-    let realTxHash = '';
-
-    if (relayerPrivateKey) {
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
-      const relayerWallet = new ethers.Wallet(relayerPrivateKey, provider);
-      const contract = new ethers.Contract(HOLD3R_ERC1155_ADDRESS, ERC1155_ABI, relayerWallet);
-
-      // Determinar Token ID numérico del activo
-      const tokenId = asset.tokenId || asset.token_id || 1;
-      const count = Number(shareCount) || 1;
-
-      // Enviar transacción relayer a la BSC
-      const tx = await contract.purchaseShares(tokenId, count);
-      const receipt = await tx.wait(1);
-
-      if (!receipt || receipt.status !== 1) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'La transacción relayer fue revertida en la blockchain BSC.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      realTxHash = receipt.hash;
-    } else {
-      // Si la llave privada del relayer aún no está inyectada en variables de entorno,
-      // realizamos consulta on-chain al nodo BSC para capturar o validar el Hash de bloque legítimo
-      const provider = new ethers.JsonRpcProvider(rpcUrl);
-      const latestBlock = await provider.getBlock('latest');
-      if (!latestBlock || !latestBlock.hash) {
-        throw new Error('No se pudo obtener la confirmación del nodo BSC.');
-      }
-      realTxHash = latestBlock.hash;
+    if (!relayerPrivateKey) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'HOT_WALLET_PRIVATE_KEY no está configurada en los Secrets de la Supabase Edge Function. Configura el Secret en la terminal con "supabase secrets set HOT_WALLET_PRIVATE_KEY=...".'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const relayerWallet = new ethers.Wallet(relayerPrivateKey, provider);
+    const contract = new ethers.Contract(HOLD3R_ERC1155_ADDRESS, ERC1155_ABI, relayerWallet);
+
+    // Determinar Token ID numérico del activo
+    const tokenId = asset.tokenId || asset.token_id || 1;
+    const count = Number(shareCount) || 1;
+
+    // Enviar transacción relayer a la BSC
+    let tx;
+    try {
+      tx = await contract.purchaseShares(tokenId, count);
+    } catch (txErr: any) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Error al enviar la transacción relayer a BSC: ${txErr.message || txErr}`
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const receipt = await tx.wait(1);
+
+    if (!receipt || (receipt.status !== 1 && receipt.status !== '0x1')) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'La transacción relayer fue revertida en la blockchain BSC.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const realTxHash = receipt.hash;
 
     if (!realTxHash || !realTxHash.startsWith('0x')) {
       return new Response(
-        JSON.stringify({ success: false, error: 'No se pudo generar un Hash on-chain legítimo para la transacción.' }),
+        JSON.stringify({ success: false, error: 'No se obtuvo un Hash de transacción válido devuelto por el nodo BSC.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -152,7 +161,7 @@ serve(async (req) => {
     const valuation = Number(asset.total_valuation || 1);
     const sharesPercentage = (numericAmount / valuation) * 100;
 
-    // C. Registrar compra en asset_shares con txHash REAL
+    // C. Registrar compra en asset_shares con txHash REAL de BscScan
     const sharePayload = {
       asset_id: assetId,
       user_id: userId,
@@ -171,7 +180,7 @@ serve(async (req) => {
     if (shareErr) {
       // Revertir deducción de saldo en caso de falla de base de datos
       await supabaseAdmin.from('wallets').update({ balance: currentBalance }).eq('id', wallet.id);
-      throw new Error(`Error al registrar participaciones: ${shareErr.message}`);
+      throw new Error(`Error al registrar participaciones en BD: ${shareErr.message}`);
     }
 
     // D. Actualizar monto fondeado del activo
@@ -186,7 +195,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Compra procesada exitosamente en BSC via Backend Relayer.',
+        message: 'Compra procesada exitosamente en BSC vía Hot Wallet Relayer.',
         txHash: realTxHash,
         newBalance: newBalance,
         shareRecord: shareRecord
@@ -196,7 +205,7 @@ serve(async (req) => {
 
   } catch (err: any) {
     return new Response(
-      JSON.stringify({ success: false, error: err.message || 'Error interno en el backend relayer.' }),
+      JSON.stringify({ success: false, error: err.message || 'Error interno en la Edge Function Relayer.' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
