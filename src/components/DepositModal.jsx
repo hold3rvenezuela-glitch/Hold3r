@@ -229,8 +229,11 @@ export default function DepositModal({
     && activeChainId !== currentNetworkConfig.chainId;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto animate-fade-in">
-      <div className="glass-panel w-full max-w-lg p-6 sm:p-7 border border-emerald-500/30 shadow-2xl relative my-auto max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-fade-in">
+      {/* ACTIVE_DEPOSIT_MODAL_v2_PRODUCTION */}
+      <div 
+        className="glass-panel w-full max-w-md p-4 sm:p-6 border border-emerald-500/40 shadow-2xl relative max-h-[92vh] overflow-y-auto my-auto text-white"
+      >
         
         {/* Glow Background Accent */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -244,69 +247,17 @@ export default function DepositModal({
           ✕
         </button>
 
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-            <Wallet className="w-5 h-5" />
+        {/* Header Compacto */}
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+            <Wallet className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-xl font-black text-white">Pasarela de Pagos USDT</h3>
-            <p className="text-xs text-neutral-400">
-              Acredita tu saldo transaccionando directamente con la Tesorería HOLD3R.
+            <h3 className="text-lg font-bold text-white leading-tight">Pasarela de Pagos USDT</h3>
+            <p className="text-[11px] text-neutral-400">
+              Acredita tu saldo transaccionando con la Tesorería HOLD3R.
             </p>
           </div>
-        </div>
-
-        {/* Mobile Browser Helpful Guide Banner */}
-        {isMobile && !hasInjected && (
-          <div className="p-3.5 rounded-2xl my-3 bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 text-xs space-y-2 animate-fade-in">
-            <div className="flex items-center gap-2 font-bold text-cyan-300">
-              <Smartphone className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span>Conexión Móvil Recomendada</span>
-            </div>
-            <p className="text-[11px] text-neutral-300 leading-relaxed">
-              Estás navegando desde un dispositivo móvil. Usa <strong>WalletConnect Universal</strong> o abre HOLD3R en el explorador interno Web3 de tu app de billetera:
-            </p>
-            <div className="flex items-center gap-2 pt-1">
-              <a 
-                href={getMobileWalletDeepLink('metamask')} 
-                target="_blank" 
-                rel="noreferrer" 
-                className="flex-1 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-orange-300 text-[11px] font-bold py-2 px-2 rounded-xl text-center flex items-center justify-center gap-1 transition-colors"
-              >
-                🦊 Abrir en MetaMask
-              </a>
-              <a 
-                href={getMobileWalletDeepLink('trust')} 
-                target="_blank" 
-                rel="noreferrer" 
-                className="flex-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[11px] font-bold py-2 px-2 rounded-xl text-center flex items-center justify-center gap-1 transition-colors"
-              >
-                🛡️ Abrir en Trust Wallet
-              </a>
-            </div>
-          </div>
-        )}
-
-        {/* Progress Tracker */}
-        <div className="grid grid-cols-3 gap-2 my-3 text-center text-[11px]">
-          {['1. Seleccionar Red', '2. Indicar Monto', '3. Transmitir / TxID'].map((step, i) => {
-            const isDone = (i === 0 && selectedNetwork)
-                        || (i === 1 && Number(depositAmount) > 0)
-                        || (i === 2 && !!txSuccess);
-            return (
-              <div 
-                key={i} 
-                className={`py-2 px-1 rounded-xl transition-all ${
-                  isDone 
-                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold' 
-                    : 'bg-neutral-900/60 border border-white/5 text-neutral-500'
-                }`}
-              >
-                {step}
-              </div>
-            );
-          })}
         </div>
 
         {/* Collapsible Network Selector Accordion */}
