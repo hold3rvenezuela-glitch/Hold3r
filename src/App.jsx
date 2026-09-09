@@ -29,6 +29,7 @@ export default function App() {
   const [loading, setLoading]                     = useState(true);
   const [showAuthModal, setShowAuthModal]         = useState(false);
   const [showKycModal, setShowKycModal]           = useState(false);
+  const [showDepositModal, setShowDepositModal]   = useState(false);
   const [selectedInvestAsset, setSelectedInvestAsset] = useState(null);
 
   // ── Inicialización ──────────────────────────────────────────────────────────
@@ -218,6 +219,7 @@ export default function App() {
         onOpenAuth={() => setShowAuthModal(true)}
         onSignOut={handleSignOut}
         onDepositUsdt={handleDepositUsdt}
+        onOpenDeposit={() => setShowDepositModal(true)}
         onOpenKyc={() => setShowKycModal(true)}
       />
 

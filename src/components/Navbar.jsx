@@ -9,13 +9,18 @@ import DepositModal from './DepositModal';
 
 export default function Navbar({ 
   currentTab, setCurrentTab, userProfile, wallet, 
-  onOpenAuth, onSignOut, onDepositUsdt, onOpenKyc
+  onOpenAuth, onSignOut, onDepositUsdt, onOpenKyc, onOpenDeposit
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWeb3Modal, setShowWeb3Modal] = useState(false);
   const [web3Wallet, setWeb3Wallet] = useState(null);
+
+  const handleOpenDeposit = () => {
+    setShowDepositModal(true);
+    onOpenDeposit?.();
+  };
 
   // Integración en tiempo real con WalletConnect / Web3Modal Account
   const { address: wcAddress, chainId: wcChainId, isConnected: wcIsConnected } = useWeb3ModalAccount();
@@ -117,7 +122,7 @@ export default function Navbar({
               <>
                 {/* USDT Balance pill */}
                 <button
-                  onClick={() => setShowDepositModal(true)}
+                  onClick={handleOpenDeposit}
                   className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl transition-all"
                   style={{ background: 'rgba(0,255,136,0.06)', border: '1px solid rgba(0,255,136,0.20)' }}
                 >
@@ -216,7 +221,7 @@ export default function Navbar({
                               </span>
                             </div>
                             <button
-                              onClick={() => { setShowDepositModal(true); setShowProfileMenu(false); }}
+                              onClick={() => { handleOpenDeposit(); setShowProfileMenu(false); }}
                               className="px-2.5 py-1 text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-lg"
                             >
                               + Depositar
@@ -260,7 +265,7 @@ export default function Navbar({
                           </button>
 
                           <button
-                            onClick={() => { setShowDepositModal(true); setShowProfileMenu(false); }}
+                            onClick={() => { handleOpenDeposit(); setShowProfileMenu(false); }}
                             className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-xl transition-colors text-left"
                             style={{ color: '#a1a1a1' }}
                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
@@ -373,7 +378,7 @@ export default function Navbar({
 
               {userProfile && (
                 <button
-                  onClick={() => { setShowDepositModal(true); setMobileMenuOpen(false); }}
+                  onClick={() => { handleOpenDeposit(); setMobileMenuOpen(false); }}
                   className="w-full flex items-center justify-between p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-bold text-emerald-300"
                 >
                   <div className="flex items-center gap-2">
@@ -411,7 +416,7 @@ export default function Navbar({
 
           {userProfile ? (
             <button
-              onClick={() => setShowDepositModal(true)}
+              onClick={handleOpenDeposit}
               className="flex flex-col items-center gap-0.5 py-1 px-2 text-emerald-400 font-bold"
             >
               <Wallet className="w-5 h-5 text-emerald-400 animate-pulse" />
