@@ -107,6 +107,37 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Suscripción Realtime a Supabase para actualizar kyc_status del usuario al instante cuando el admin aprueba
+  useEffect(() => {
+    if (!userProfile?.id) return;
+
+    const channel = supabase
+      .channel(`profile_changes_${userProfile.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userProfile.id}` },
+        async (payload) => {
+          if (payload.new) {
+            setUserProfile(prev => ({ ...prev, ...payload.new }));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'kyc_verifications', filter: `user_id=eq.${userProfile.id}` },
+        async (payload) => {
+          if (payload.new && payload.new.status) {
+            setUserProfile(prev => ({ ...prev, kyc_status: payload.new.status }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userProfile?.id]);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   // Llamado desde AuthModal tras signIn/signUp exitoso

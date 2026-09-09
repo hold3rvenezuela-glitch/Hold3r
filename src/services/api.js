@@ -137,6 +137,26 @@ export async function getUserProfile(userId) {
   if (error && error.code !== 'PGRST116') {
     console.error('Error al obtener perfil:', error);
   }
+
+  if (!data) return null;
+
+  // Verificación cruzada con kyc_verifications para garantizar sincronización en tiempo real
+  try {
+    const { data: kyc } = await supabase
+      .from('kyc_verifications')
+      .select('status')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (kyc?.status && kyc.status !== data.kyc_status) {
+      data.kyc_status = kyc.status;
+      // Sincronizar tabla profiles en segundo plano
+      supabase.from(TABLES.PROFILES).update({ kyc_status: kyc.status }).eq('id', userId).then();
+    }
+  } catch (_kErr) {
+    // Silencioso
+  }
+
   return data;
 }
 
@@ -280,11 +300,38 @@ export async function submitKycVerification(payload) {
     updated_at: new Date().toISOString()
   };
 
-  const { data, error } = await supabase
-    .from('kyc_verifications')
-    .upsert(dbPayload, { onConflict: 'user_id' })
-    .select()
-    .single();
+  let data = null;
+  let error = null;
+
+  try {
+    const res = await supabase
+      .from('kyc_verifications')
+      .upsert(dbPayload, { onConflict: 'user_id' })
+      .select()
+      .single();
+    data = res.data;
+    error = res.error;
+  } catch (err) {
+    error = err;
+  }
+
+  // Fallback si la columna 'address_street' no existe aún en la caché de Supabase PostgREST
+  if (error && (error.message?.includes('address_street') || error.code === 'PGRST204')) {
+    console.warn('Aviso: columna address_street no encontrada en kyc_verifications. Usando fallback sin campo en tabla kyc_verifications...');
+    delete dbPayload.address_street;
+    if (addressStreet) {
+      dbPayload.address_city = `${addressCity} (${addressStreet})`;
+    }
+
+    const retryRes = await supabase
+      .from('kyc_verifications')
+      .upsert(dbPayload, { onConflict: 'user_id' })
+      .select()
+      .single();
+    
+    data = retryRes.data;
+    error = retryRes.error;
+  }
 
   if (error) {
     console.error('Error enviando KYC a Supabase:', error);
@@ -292,14 +339,24 @@ export async function submitKycVerification(payload) {
   }
 
   // Actualizar estado del perfil del usuario a 'pending' y guardar wallet BEP20 y dirección
-  await supabase
-    .from(TABLES.PROFILES)
-    .update({ 
-      kyc_status: 'pending',
-      bep20_wallet: bep20Wallet,
-      address_street: addressStreet || ''
-    })
-    .eq('id', userId);
+  try {
+    await supabase
+      .from(TABLES.PROFILES)
+      .update({ 
+        kyc_status: 'pending',
+        bep20_wallet: bep20Wallet,
+        address_street: addressStreet || ''
+      })
+      .eq('id', userId);
+  } catch (_pErr) {
+    await supabase
+      .from(TABLES.PROFILES)
+      .update({ 
+        kyc_status: 'pending',
+        bep20_wallet: bep20Wallet
+      })
+      .eq('id', userId);
+  }
 
   return data;
 }
@@ -337,10 +394,16 @@ export async function reviewKycVerification({ kycId, userId, status, rejectionRe
   }
 
   // Actualizar kyc_status en public.profiles
-  await supabase
-    .from(TABLES.PROFILES)
-    .update({ kyc_status: status })
-    .eq('id', userId);
+  if (userId) {
+    const { error: profErr } = await supabase
+      .from(TABLES.PROFILES)
+      .update({ kyc_status: status })
+      .eq('id', userId);
+
+    if (profErr) {
+      console.warn('Aviso al actualizar profiles:', profErr.message);
+    }
+  }
 
   return data;
 }
