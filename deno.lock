@@ -13,6 +13,7 @@
     "https://deno.land/std@0.177.0/async/tee.ts": "47e42d35f622650b02234d43803d0383a89eb4387e1b83b5a40106d18ae36757",
     "https://deno.land/std@0.177.0/http/server.ts": "cbb17b594651215ba95c01a395700684e569c165a567e4e04bba327f41197433",
     "https://esm.sh/@supabase/supabase-js@2.39.0": "f51aeb2dbf8f67c8fa396628af45793e3513067d45705f1ea158f5c678bb0cea",
+    "https://esm.sh/ethers@5.7.2": "d6b07552bcbe5b00deb71568086baf036bcf039809c3ea848a85c8f238e33749",
     "https://esm.sh/ethers@6.10.0": "27ccdfc37a026a947bd8fe8def01b33df92f82bc12aec4f477096a3a85817ae4"
   },
   "workspace": {
