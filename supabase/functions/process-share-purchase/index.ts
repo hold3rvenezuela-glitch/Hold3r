@@ -1,7 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-import { ethers } from "https://esm.sh/ethers@6.13.1?bundle-deps";
-
+import { ethers } from "https://esm.sh/ethers@6.13.1";
 // Configuración de Redes y Nodos RPC para Relayer en BSC
 const RPC_NODES: Record<string, string> = {
   BEP20: Deno.env.get('BSC_MAINNET_RPC_URL') || 'https://bsc-dataseed.binance.org/',
