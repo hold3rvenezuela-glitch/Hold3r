@@ -9,6 +9,7 @@ import AdminPanel from './components/AdminPanel';
 import PublicExplorerView from './components/PublicExplorerView';
 import KycVerificationModal from './components/KycVerificationModal';
 import VirtualOfficeView from './components/VirtualOfficeView';
+import DepositModal from './components/DepositModal';
 import { 
   getCurrentSession, 
   getUserProfile, 
@@ -357,6 +358,13 @@ export default function App() {
           onOpenKycModal={() => { setSelectedInvestAsset(null); setShowKycModal(true); }}
         />
       )}
+
+      {/* Deposit Modal Pasarela USDT Multi-Red */}
+      <DepositModal
+        isOpen={showDepositModal}
+        onClose={() => setShowDepositModal(false)}
+        onDepositUsdt={handleDepositUsdt}
+      />
     </div>
   );
 }
