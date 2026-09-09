@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
-import { ethers } from "https://esm.sh/ethers@6.13.1?target=deno";
+import { ethers } from "https://esm.sh/ethers@5.7.2";
 // Configuración de Redes y Nodos RPC para Relayer en BSC
 const RPC_NODES: Record<string, string> = {
   BEP20: Deno.env.get('BSC_MAINNET_RPC_URL') || 'https://bsc-dataseed.binance.org/',
@@ -103,9 +103,9 @@ serve(async (req) => {
       );
     }
 
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const relayerWallet = new ethers.Wallet(relayerPrivateKey, provider);
-    const contract = new ethers.Contract(HOLD3R_ERC1155_ADDRESS, ERC1155_ABI, relayerWallet);
+    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+const relayerWallet = new ethers.Wallet(relayerPrivateKey, provider);
+const contract = new ethers.Contract(HOLD3R_ERC1155_ADDRESS, ERC1155_ABI, relayerWallet);
 
     // Determinar Token ID numérico del activo
     const tokenId = asset.tokenId || asset.token_id || 1;
