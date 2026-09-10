@@ -28,10 +28,27 @@ export default function App() {
   const [assets, setAssets]                       = useState([]);
   const [userShares, setUserShares]               = useState([]);
   const [loading, setLoading]                     = useState(true);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [showAuthModal, setShowAuthModal]         = useState(false);
   const [showKycModal, setShowKycModal]           = useState(false);
   const [showDepositModal, setShowDepositModal]   = useState(false);
   const [selectedInvestAsset, setSelectedInvestAsset] = useState(null);
+
+  const LOADING_MESSAGES = [
+    "Sincronizando activos del mundo real (RWA)...",
+    "Verificando contratos inteligentes en la red...",
+    "Preparando catálogo de inversión fraccionada...",
+    "HOLD3R Protocol: Tokenización segura y auditada..."
+  ];
+
+  // Rotación de mensajes institucionales durante la carga
+  useEffect(() => {
+    if (!loading) return;
+    const interval = setInterval(() => {
+      setLoadingMessageIndex(prev => (prev + 1) % LOADING_MESSAGES.length);
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   // ── Inicialización ──────────────────────────────────────────────────────────
   const initApp = async () => {
@@ -226,22 +243,38 @@ export default function App() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {loading ? (
-          <div
-            className="my-auto p-8 sm:p-16 text-center rounded-2xl max-w-md mx-auto"
-            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            <div className="relative w-12 h-12 mx-auto mb-4">
-              <div
-                className="w-12 h-12 rounded-full border-2 animate-spin"
-                style={{ borderColor: '#00FF66', borderTopColor: 'transparent' }}
+          <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center animate-fade-in">
+            {/* Logo de HOLD3R con resplandor verde pulsatil e hilera de carga */}
+            <div className="relative w-20 h-20 mb-6 flex items-center justify-center">
+              <div 
+                className="absolute inset-0 rounded-3xl animate-ping opacity-25"
+                style={{ background: '#00FF88', filter: 'blur(8px)' }}
               />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-[10px] font-black text-emerald-400 font-mono">H</span>
+              <div 
+                className="w-18 h-18 rounded-3xl border-2 border-emerald-500/40 flex items-center justify-center shadow-2xl relative z-10"
+                style={{ background: 'linear-gradient(145deg, #0d1714 0%, #080c0b 100%)', boxShadow: '0 0 25px rgba(0,255,136,0.2)' }}
+              >
+                <div 
+                  className="w-12 h-12 rounded-2xl border-2 animate-spin"
+                  style={{ borderColor: '#00FF88', borderTopColor: 'transparent' }}
+                />
+                <span className="absolute text-base font-black text-emerald-400 font-mono tracking-widest">H</span>
               </div>
             </div>
-            <p className="text-xs font-mono text-neutral-400">
-              Conectando con Supabase · Cargando catálogo RWA...
-            </p>
+
+            {/* Mensaje dinámico rotativo */}
+            <div className="h-8 flex items-center justify-center">
+              <p className="text-xs sm:text-sm font-semibold font-mono text-emerald-400/90 tracking-wide animate-fade-in">
+                {LOADING_MESSAGES[loadingMessageIndex]}
+              </p>
+            </div>
+
+            <div className="w-48 h-1 bg-neutral-900 rounded-full mt-4 overflow-hidden border border-white/5">
+              <div 
+                className="h-full bg-emerald-400 transition-all duration-500 rounded-full"
+                style={{ width: `${((loadingMessageIndex + 1) / LOADING_MESSAGES.length) * 100}%` }}
+              />
+            </div>
           </div>
         ) : (
           <>
