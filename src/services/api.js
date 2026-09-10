@@ -1485,14 +1485,33 @@ export async function buyMarketplaceOrderInternal({ orderId, buyerId }) {
     }
   }
 
-  // C. 3. Movimiento de fondos: Débito al comprador y Crédito al vendedor
+  // C. 3. Movimiento de fondos: Débito al comprador y Crédito obligatorio al vendedor
   try {
+    // Débito al comprador
     await depositFunds(buyerWallet.id, buyerWallet.balance, -priceUsdt);
-    if (sellerWallet) {
-      await depositFunds(sellerWallet.id, sellerWallet.balance, priceUsdt);
+
+    // Crédito al vendedor (obtener o crear wallet si no existía)
+    let sWallet = sellerWallet;
+    if (!sWallet) {
+      sWallet = await getUserWallet(order.seller_id);
+    }
+
+    if (sWallet && sWallet.id) {
+      await depositFunds(sWallet.id, sWallet.balance, priceUsdt);
+    } else {
+      // Intentar crear wallet para el vendedor si no la tenía registrada
+      const { data: newSWallet } = await supabase
+        .from(TABLES.WALLETS)
+        .insert({ user_id: order.seller_id, usdt_address: '', network: 'BEP20', balance: priceUsdt, updated_at: new Date().toISOString() })
+        .select()
+        .single();
+
+      if (!newSWallet) {
+        console.error('No se pudo reacreditar la wallet del vendedor:', order.seller_id);
+      }
     }
   } catch (finErr) {
-    console.error('Advertencia al ajustar saldos en wallets:', finErr.message);
+    console.error('Error al ajustar saldos financieros en wallets:', finErr.message);
   }
 
   // C. 4. Registros auditables en wallet_transactions

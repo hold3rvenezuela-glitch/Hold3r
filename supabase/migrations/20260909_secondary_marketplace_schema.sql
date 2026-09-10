@@ -121,13 +121,19 @@ BEGIN
     RAISE EXCEPTION 'Saldo insuficiente en USDT para completar la compra (Saldo actual: %, Precio: %).', v_buyer_wallet.balance, v_order.price_usdt;
   END IF;
 
-  -- C. Buscar wallet del vendedor
+  -- C. Buscar wallet del vendedor o crearla si no existía aún
   SELECT * INTO v_seller_wallet
   FROM public.wallets
   WHERE user_id = v_order.seller_id
   FOR UPDATE;
 
-  v_tx_hash := '0xint_buy_' + md5(random()::text || clock_timestamp()::text);
+  IF NOT FOUND THEN
+    INSERT INTO public.wallets (user_id, usdt_address, network, balance, updated_at)
+    VALUES (v_order.seller_id, '', 'BEP20', 0, now())
+    RETURNING * INTO v_seller_wallet;
+  END IF;
+
+  v_tx_hash := '0xint_buy_' || md5(random()::text || clock_timestamp()::text);
 
   -- 1. Actualizar estatus de la orden de mercado
   UPDATE public.marketplace_orders
@@ -142,7 +148,7 @@ BEGIN
   SET user_id = p_buyer_id
   WHERE id = v_order.share_id;
 
-  -- 3. Movimientos financieros en wallets
+  -- 3. Movimientos financieros en wallets (Débito comprador, Crédito vendedor)
   UPDATE public.wallets
   SET balance = balance - v_order.price_usdt,
       updated_at = now()
