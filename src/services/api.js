@@ -1018,10 +1018,55 @@ export async function investInAsset({ userId, wallet, asset, investmentUsdt, sig
 }
 
 // ----------------------------------------------------
-// PROPOSALS & VOTES (GOBERNANZA)
+// PROPOSALS & VOTES (GOBERNANZA - VOTO PONDERADO)
 // ----------------------------------------------------
 
-export async function fetchProposals() {
+/**
+ * Calcula el poder de voto del usuario = suma de shares_percentage en asset_shares.
+ * Retorna 0 si no posee acciones. Admins sin acciones retornan 1.0.
+ */
+export async function getUserVotingPower(userId, userRole = 'investor') {
+  if (!userId) return 0;
+
+  try {
+    const { data, error } = await supabase
+      .from(TABLES.ASSET_SHARES)
+      .select('shares_percentage')
+      .eq('user_id', userId)
+      .gt('shares_percentage', 0);
+
+    if (error) {
+      console.warn('Aviso al calcular poder de voto:', error.message);
+      return userRole === 'admin' ? 1.0 : 0;
+    }
+
+    const totalPower = (data || []).reduce((acc, s) => acc + Number(s.shares_percentage || 0), 0);
+
+    // Admin sin fracciones propias: poder simbólico = 1.0
+    if (userRole === 'admin' && totalPower === 0) return 1.0;
+
+    return totalPower;
+  } catch (err) {
+    console.warn('Error al obtener poder de voto:', err.message);
+    return userRole === 'admin' ? 1.0 : 0;
+  }
+}
+
+/**
+ * Obtiene las propuestas de gobernanza.
+ * - Admin: ve todas las propuestas.
+ * - Investor: solo ve propuestas si posee acciones activas (shares_percentage > 0).
+ *   Si no tiene tenencia, retorna [] en lugar de lanzar error.
+ */
+export async function fetchProposals(userId = null, userRole = 'investor') {
+  // Inversores sin tenencia activa: retornar lista vacía sin consultar
+  if (userId && userRole !== 'admin') {
+    const votingPower = await getUserVotingPower(userId, userRole);
+    if (votingPower === 0) {
+      return { proposals: [], votingPower: 0, hasAccess: false };
+    }
+  }
+
   const { data, error } = await supabase
     .from(TABLES.PROPOSALS)
     .select(`
@@ -1031,8 +1076,24 @@ export async function fetchProposals() {
     `)
     .order('created_at', { ascending: false });
 
-  if (error) console.warn('Aviso de lectura de propuestas:', error.message);
-  return data || [];
+  if (error) {
+    // RLS bloqueó la consulta (usuario sin tenencia): retornar vacío limpiamente
+    if (error.code === '42501' || error.status === 403 || error.message?.includes('policy')) {
+      console.warn('RLS gobernanza: acceso denegado (sin tenencia activa).', error.message);
+      return { proposals: [], votingPower: 0, hasAccess: false };
+    }
+    console.warn('Aviso de lectura de propuestas:', error.message);
+    return { proposals: [], votingPower: 0, hasAccess: false };
+  }
+
+  // Calcular poder de voto del usuario actual
+  const votingPower = userId ? await getUserVotingPower(userId, userRole) : 0;
+
+  return {
+    proposals: data || [],
+    votingPower,
+    hasAccess: true
+  };
 }
 
 export async function createProposal({ assetId, title, description }) {
@@ -1055,25 +1116,81 @@ export async function createProposal({ assetId, title, description }) {
   return data;
 }
 
-export async function castVote({ proposalId, userId, voteChoice, weight = 1.0 }) {
-  const validProposalId = (proposalId && proposalId.length === 36) ? proposalId : generateUUID();
-  const validUserId = (userId && userId.length === 36) ? userId : '11111111-1111-4111-8111-111111111111';
+/**
+ * Emite un voto ponderado usando el RPC cast_weighted_vote.
+ * El peso del voto = suma de shares_percentage del usuario en asset_shares.
+ * Previene votos duplicados a nivel de base de datos.
+ * Fallback a inserción directa si el RPC no está disponible.
+ */
+export async function castVote({ proposalId, userId, voteChoice }) {
+  if (!proposalId || !userId || !voteChoice) {
+    throw new Error('Faltan parámetros requeridos para emitir el voto.');
+  }
 
-  const payload = {
-    proposal_id: validProposalId,
-    user_id: validUserId,
-    vote: voteChoice, // 'yes' | 'no'
-    weight: weight
-  };
+  const validProposalId = (proposalId && proposalId.length === 36) ? proposalId : null;
+  const validUserId = (userId && userId.length === 36) ? userId : null;
+
+  if (!validProposalId || !validUserId) {
+    throw new Error('ID de propuesta o usuario inválido.');
+  }
+
+  // 1. Intentar RPC atómica cast_weighted_vote (calcula peso y previene duplicados en DB)
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('cast_weighted_vote', {
+      p_proposal_id: validProposalId,
+      p_user_id: validUserId,
+      p_vote: voteChoice
+    });
+
+    if (!rpcError && rpcData?.success) {
+      return rpcData;
+    }
+
+    // Si el RPC retorna error de negocio (sin tenencia, duplicado), propagar el mensaje
+    if (rpcError) {
+      throw new Error(rpcError.message || 'Error al registrar voto ponderado.');
+    }
+  } catch (rpcErr) {
+    // Si el error proviene del RPC (sin tenencia, voto duplicado, propuesta inactiva), relanzar
+    if (rpcErr.message && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
+      throw rpcErr;
+    }
+    console.warn('RPC cast_weighted_vote no disponible, usando fallback directo:', rpcErr.message);
+  }
+
+  // 2. Fallback: calcular peso manualmente e insertar directamente
+  const votingPower = await getUserVotingPower(validUserId);
+
+  if (votingPower === 0) {
+    throw new Error('No posees fracciones activas. Solo los Socios con tenencia de acciones pueden votar en gobernanza.');
+  }
+
+  // Verificar voto duplicado antes de insertar
+  const { data: existing } = await supabase
+    .from(TABLES.VOTES)
+    .select('id')
+    .eq('proposal_id', validProposalId)
+    .eq('user_id', validUserId)
+    .maybeSingle();
+
+  if (existing) {
+    throw new Error('Ya emitiste un voto en esta propuesta. No se permiten votos duplicados.');
+  }
 
   const { data, error } = await supabase
     .from(TABLES.VOTES)
-    .insert(payload)
+    .insert({
+      proposal_id: validProposalId,
+      user_id: validUserId,
+      vote: voteChoice,
+      weight: votingPower
+    })
     .select()
     .single();
 
-  if (error) throw error;
-  return data;
+  if (error) throw new Error(error.message || 'Error al registrar el voto.');
+
+  return { success: true, voting_power: votingPower, vote: voteChoice, ...data };
 }
 
 // ----------------------------------------------------
