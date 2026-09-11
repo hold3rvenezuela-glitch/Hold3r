@@ -1474,60 +1474,77 @@ export async function fetchUserActiveMarketOrders(sellerId) {
  * y filtra por tenencia previa si el usuario es de rol 'investor'.
  */
 export async function fetchGovernanceMarketOrders(currentUserId = null, userRole = 'investor') {
-  let query = supabase
-    .from(TABLES.MARKETPLACE_ORDERS)
-    .select(`
-      *,
-      asset:assets (title, category, images, total_valuation),
-      seller:profiles!seller_id (full_name, document_id, avatar_url)
-    `)
-    .order('created_at', { ascending: false });
-
-  // Excluir órdenes creadas por el usuario autenticado actual si se proporciona currentUserId
-  if (currentUserId) {
-    query = query.neq('seller_id', currentUserId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('Error al consultar ofertas de gobernanza:', error.message);
-    return [];
-  }
-
-  const now = new Date();
-  const allOrders = (data || []).map(order => {
-    if (order.status === 'IN_REVIEW_GOVERNANCE' && new Date(order.governance_expires_at) <= now) {
-      return { ...order, status: 'PUBLIC_MARKET' };
-    }
-    return order;
-  });
-
-  // Si el usuario es 'admin', tiene visibilidad general de control
-  if (userRole === 'admin' || !currentUserId) {
-    return allOrders;
-  }
-
-  // Si el usuario es 'investor', verificar en asset_shares en qué activos posee o ha poseído participación previa
   try {
-    const { data: userShares } = await supabase
-      .from(TABLES.ASSET_SHARES)
-      .select('asset_id')
-      .eq('user_id', currentUserId);
+    let query = supabase
+      .from(TABLES.MARKETPLACE_ORDERS)
+      .select(`
+        *,
+        asset:assets (title, category, images, total_valuation),
+        seller:profiles!seller_id (full_name, document_id, avatar_url)
+      `)
+      .order('created_at', { ascending: false });
 
-    const userAssetIds = new Set((userShares || []).map(s => s.asset_id));
+    // Excluir de forma estricta órdenes creadas por el usuario autenticado actual
+    if (currentUserId) {
+      query = query.neq('seller_id', currentUserId);
+    }
 
-    // Filtrar: En la fase de Gobernanza (IN_REVIEW_GOVERNANCE - 48h), solo los accionistas previos de ese activo pueden ver la oferta.
-    // Si la orden ya pasó a PUBLIC_MARKET, cualquier usuario puede verla.
-    return allOrders.filter(order => {
-      if (order.status === 'IN_REVIEW_GOVERNANCE') {
-        return userAssetIds.has(order.asset_id);
+    const { data, error } = await query;
+
+    // Manejo limpio de errores de RLS o permisos denegados de Supabase
+    if (error) {
+      if (error.code === '42501' || error.status === 403 || error.message?.includes('policy')) {
+        console.warn('Aviso RLS (Acceso restringido por políticas de seguridad de Supabase):', error.message);
+      } else {
+        console.error('Error al consultar ofertas de gobernanza:', error.message);
       }
-      return true;
-    });
-  } catch (err) {
-    console.warn('Error al verificar tenencia previa del inversor:', err);
-    return allOrders.filter(order => order.status !== 'IN_REVIEW_GOVERNANCE');
+      return [];
+    }
+
+    const now = new Date();
+    // Excluir adicionalmente cualquier orden propia en caso de discrepancia de tipos de ID
+    const allOrders = (data || [])
+      .filter(order => !currentUserId || order.seller_id !== currentUserId)
+      .map(order => {
+        if (order.status === 'IN_REVIEW_GOVERNANCE' && new Date(order.governance_expires_at) <= now) {
+          return { ...order, status: 'PUBLIC_MARKET' };
+        }
+        return order;
+      });
+
+    // Si el usuario es 'admin', tiene visibilidad general de control
+    if (userRole === 'admin' || !currentUserId) {
+      return allOrders;
+    }
+
+    // Si el usuario es 'investor', verificar en asset_shares en qué activos posee o ha poseído participación previa
+    try {
+      const { data: userShares, error: sharesErr } = await supabase
+        .from(TABLES.ASSET_SHARES)
+        .select('asset_id')
+        .eq('user_id', currentUserId);
+
+      if (sharesErr) {
+        console.warn('Aviso RLS en asset_shares:', sharesErr.message);
+        return allOrders.filter(order => order.status !== 'IN_REVIEW_GOVERNANCE');
+      }
+
+      const userAssetIds = new Set((userShares || []).map(s => s.asset_id));
+
+      // Filtrar: En la fase de Gobernanza (IN_REVIEW_GOVERNANCE - 48h), solo los accionistas previos de ese activo pueden ver la oferta.
+      return allOrders.filter(order => {
+        if (order.status === 'IN_REVIEW_GOVERNANCE') {
+          return userAssetIds.has(order.asset_id);
+        }
+        return true;
+      });
+    } catch (err) {
+      console.warn('Error al verificar tenencia previa del inversor:', err.message);
+      return allOrders.filter(order => order.status !== 'IN_REVIEW_GOVERNANCE');
+    }
+  } catch (globalErr) {
+    console.warn('Excepción capturada en fetchGovernanceMarketOrders (RLS Fallback):', globalErr.message);
+    return [];
   }
 }
 

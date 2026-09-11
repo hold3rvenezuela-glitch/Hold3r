@@ -149,13 +149,13 @@ export default function GovernanceView({ userProfile, assets }) {
 
         {loadingOrders ? (
           <p className="text-xs font-mono text-neutral-400 py-4 text-center">Cargando órdenes en bóveda...</p>
-        ) : governanceOrders.filter(o => o.status === 'IN_REVIEW_GOVERNANCE').length === 0 ? (
+        ) : governanceOrders.filter(o => o.status === 'IN_REVIEW_GOVERNANCE' && o.seller_id !== userProfile?.id).length === 0 ? (
           <div className="p-4 rounded-xl bg-neutral-900/40 border border-neutral-800 text-center text-xs text-neutral-400">
             No hay solicitudes de reventa en periodo de tanteo de 48 horas actualmente.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {governanceOrders.filter(o => o.status === 'IN_REVIEW_GOVERNANCE').map(ord => {
+            {governanceOrders.filter(o => o.status === 'IN_REVIEW_GOVERNANCE' && o.seller_id !== userProfile?.id).map(ord => {
               const expiresAt = new Date(ord.governance_expires_at);
               const remainingMs = Math.max(0, expiresAt.getTime() - Date.now());
               const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
