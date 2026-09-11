@@ -1,24 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Vote, CheckCircle2, XCircle, Plus, Clock, ShoppingCart,
-  RefreshCw, ShieldCheck, BarChart2, AlertTriangle
+  RefreshCw, ShieldCheck, BarChart2, AlertTriangle, Bell, Trophy, Minus
 } from 'lucide-react';
 import {
   fetchProposals, castVote, createProposal,
-  fetchGovernanceMarketOrders, buyMarketplaceOrderInternal
+  fetchGovernanceMarketOrders, buyMarketplaceOrderInternal,
+  closeExpiredProposals, fetchGovernanceNotifications, markGovernanceNotificationsRead
 } from '../services/api';
+import { supabase } from '../../lib/supabase';
 
 export default function GovernanceView({ userProfile, assets }) {
-  const [proposals, setProposals]           = useState([]);
-  const [votingPower, setVotingPower]        = useState(0);
-  const [byAssetPower, setByAssetPower]      = useState({});
-  const [hasAccess, setHasAccess]            = useState(false);
-  const [governanceOrders, setGovernanceOrders] = useState([]);
-  const [loading, setLoading]               = useState(true);
-  const [loadingOrders, setLoadingOrders]   = useState(true);
-  const [buyingOrderId, setBuyingOrderId]   = useState(null);
-  const [showNewModal, setShowNewModal]     = useState(false);
-  const [votingId, setVotingId]             = useState(null);
+  const [proposals, setProposals]               = useState([]);
+  const [votingPower, setVotingPower]            = useState(0);
+  const [byAssetPower, setByAssetPower]          = useState({});
+  const [hasAccess, setHasAccess]                = useState(false);
+  const [governanceOrders, setGovernanceOrders]  = useState([]);
+  const [loading, setLoading]                    = useState(true);
+  const [loadingOrders, setLoadingOrders]        = useState(true);
+  const [buyingOrderId, setBuyingOrderId]        = useState(null);
+  const [showNewModal, setShowNewModal]          = useState(false);
+  const [votingId, setVotingId]                  = useState(null);
+  const [notifications, setNotifications]        = useState([]);
+  const [showNotifPanel, setShowNotifPanel]      = useState(false);
+  const realtimeChannelRef                       = useRef(null);
 
   // Form state
   const [selectedAssetId, setSelectedAssetId] = useState('');
@@ -27,6 +32,7 @@ export default function GovernanceView({ userProfile, assets }) {
   const [submitting, setSubmitting]           = useState(false);
 
   const isAdmin = userProfile?.role === 'admin';
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   // Assets donde el usuario tiene acciones (para el modal de nueva propuesta)
   const assetsWithShares = isAdmin
@@ -52,6 +58,9 @@ export default function GovernanceView({ userProfile, assets }) {
   const loadProposals = async () => {
     setLoading(true);
     try {
+      // Cerrar propuestas expiradas antes de cargar (fallback cuando pg_cron no está activo)
+      await closeExpiredProposals();
+
       const result = await fetchProposals(userProfile?.id, userProfile?.role || 'investor');
       setProposals(result.proposals);
       setVotingPower(result.votingPower);
@@ -70,6 +79,32 @@ export default function GovernanceView({ userProfile, assets }) {
   useEffect(() => {
     loadProposals();
     loadGovernanceOrders();
+
+    // Cargar notificaciones del usuario
+    if (userProfile?.id) {
+      fetchGovernanceNotifications(userProfile.id).then(setNotifications);
+
+      // Suscripción Realtime para nuevas notificaciones (push in-app)
+      const channel = supabase
+        .channel(`gov-notif-${userProfile.id}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'governance_notifications',
+          filter: `user_id=eq.${userProfile.id}`
+        }, (payload) => {
+          setNotifications(prev => [payload.new, ...prev]);
+        })
+        .subscribe();
+
+      realtimeChannelRef.current = channel;
+    }
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+      }
+    };
   }, [userProfile?.id]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -153,6 +188,25 @@ export default function GovernanceView({ userProfile, assets }) {
     return { yesPower, noPower, totalPower, yesPercent, noPercent: 100 - yesPercent };
   };
 
+  // Retorna el tiempo restante de votación de una propuesta (legible)
+  const getTimeRemaining = (expiresAt) => {
+    if (!expiresAt) return null;
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (ms <= 0) return { expired: true, label: 'Expirada' };
+    const h = Math.floor(ms / (1000 * 60 * 60));
+    const m = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    return { expired: false, label: h > 0 ? `${h}h ${m}m restantes` : `${m}m restantes` };
+  };
+
+  // Handler para marcar notificaciones como leídas y abrir panel
+  const handleOpenNotifPanel = async () => {
+    setShowNotifPanel(v => !v);
+    if (!showNotifPanel && unreadCount > 0) {
+      await markGovernanceNotificationsRead(userProfile?.id);
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-8 animate-fade-in pb-16">
@@ -179,6 +233,47 @@ export default function GovernanceView({ userProfile, assets }) {
             }`}>
               <BarChart2 className="w-3.5 h-3.5" />
               Poder de Voto: {votingPower > 0 ? `${Number(votingPower).toFixed(4)}%` : '0%'}
+            </div>
+          )}
+
+          {/* Campana de Notificaciones */}
+          {userProfile && (
+            <div className="relative">
+              <button
+                onClick={handleOpenNotifPanel}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs text-neutral-300 transition-all"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-indigo-500 text-white text-[9px] font-bold">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Panel desplegable de notificaciones */}
+              {showNotifPanel && (
+                <div className="absolute right-0 top-10 z-50 w-80 max-h-96 overflow-y-auto rounded-2xl border border-white/10 bg-neutral-950 shadow-2xl animate-fade-in">
+                  <div className="p-3 border-b border-white/10">
+                    <h4 className="text-xs font-bold text-white">Notificaciones de Gobernanza</h4>
+                  </div>
+                  {notifications.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-neutral-500">Sin notificaciones recientes.</div>
+                  ) : (
+                    notifications.map(n => (
+                      <div key={n.id} className={`p-3 border-b border-white/5 text-xs ${
+                        n.is_read ? 'text-neutral-500' : 'text-neutral-200 bg-indigo-500/5'
+                      }`}>
+                        <p className="font-semibold mb-0.5">{n.asset?.title || 'Activo RWA'}</p>
+                        <p className="leading-relaxed">{n.message}</p>
+                        <p className="text-[10px] text-neutral-600 mt-1 font-mono">
+                          {new Date(n.created_at).toLocaleString('es-VE')}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -317,14 +412,30 @@ export default function GovernanceView({ userProfile, assets }) {
               <div key={prop.id} className="glass-panel p-6 border border-white/10 space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <span className="text-[10px] font-mono uppercase bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30">
-                      Activo: {asset.title || 'General RWA'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono uppercase bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30">
+                        Activo: {asset.title || 'General RWA'}
+                      </span>
+                      <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                        isClosed ? 'bg-neutral-800 text-neutral-400 border-neutral-700' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                      }`}>
+                        <Clock className="w-3 h-3" />
+                        {getRemainingLabel(prop.expires_at)}
+                      </span>
+                    </div>
                     <h3 className="text-lg font-bold text-white mt-1.5">{prop.title}</h3>
                     <p className="text-xs text-neutral-300 mt-1 leading-relaxed">{prop.description}</p>
                   </div>
-                  <span className={`badge-category ${prop.status === 'active' ? 'badge-status-funding' : 'badge-status-sold'}`}>
-                    {prop.status === 'active' ? 'Votación Abierta' : prop.status}
+                  <span className={`badge-category ${
+                    isClosed
+                      ? winner === 'approved' ? 'badge-status-active bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : winner === 'rejected' ? 'badge-status-sold bg-rose-500/20 text-rose-300 border-rose-500/30'
+                        : 'bg-neutral-700 text-neutral-300 border-neutral-600'
+                      : 'badge-status-funding'
+                  }`}>
+                    {isClosed
+                      ? winner === 'approved' ? ' Aprobada' : winner === 'rejected' ? ' Rechazada' : ' Empate (Cerrada)'
+                      : 'Votación Abierta'}
                   </span>
                 </div>
 
@@ -355,7 +466,11 @@ export default function GovernanceView({ userProfile, assets }) {
                     Tu poder en este activo: <strong className="text-indigo-300">{propPower.toFixed(4)}%</strong>
                   </div>
 
-                  {userVoted ? (
+                  {isClosed ? (
+                    <div className="text-xs font-mono font-bold text-neutral-400 bg-neutral-900 px-3 py-1.5 rounded-xl border border-neutral-700">
+                      Votación Finalizada
+                    </div>
+                  ) : userVoted ? (
                     <div className="flex items-center gap-2 text-xs font-bold text-cyan-300 bg-cyan-950/40 px-3 py-1.5 rounded-xl border border-cyan-500/30">
                       <CheckCircle2 className="w-4 h-4" />
                       Tu voto: <span className="uppercase font-mono">{userVoted.vote}</span>
@@ -368,7 +483,7 @@ export default function GovernanceView({ userProfile, assets }) {
                         disabled={!!votingId || !canVote}
                         className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                         {votingId === prop.id + 'yes' ? 'Registrando...' : 'Votar A Favor'}
                       </button>
                       <button
@@ -376,7 +491,7 @@ export default function GovernanceView({ userProfile, assets }) {
                         disabled={!!votingId || !canVote}
                         className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        <XCircle className="w-4 h-4" />
+                        <XCircle className="w-4 h-4 text-rose-400" />
                         {votingId === prop.id + 'no' ? 'Registrando...' : 'Votar En Contra'}
                       </button>
                     </div>

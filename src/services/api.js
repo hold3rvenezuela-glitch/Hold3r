@@ -1177,6 +1177,7 @@ export async function createProposal({ assetId, title, description }) {
   }
 
   // 2. Fallback: inserción directa (RPC aún no ejecutado en Supabase)
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from(TABLES.PROPOSALS)
     .insert({
@@ -1184,6 +1185,7 @@ export async function createProposal({ assetId, title, description }) {
       title:       title.trim(),
       description: description.trim(),
       status:      'active',
+      expires_at:  expiresAt,
       created_at:  new Date().toISOString()
     })
     .select()
@@ -1241,10 +1243,25 @@ export async function castVote({ proposalId, userId, voteChoice }) {
   }
 
   // 2. Fallback: calcular peso manualmente e insertar directamente
-  const votingPower = await getUserVotingPower(validUserId);
+  const vp = await getUserVotingPower(validUserId);
+  const fallbackPower = vp.totalPower || 0;
 
-  if (votingPower === 0) {
+  if (fallbackPower === 0) {
     throw new Error('No posees fracciones activas. Solo los Socios con tenencia de acciones pueden votar en gobernanza.');
+  }
+
+  // Verificar expiración de la propuesta
+  const { data: propCheck } = await supabase
+    .from(TABLES.PROPOSALS)
+    .select('status, expires_at')
+    .eq('id', validProposalId)
+    .maybeSingle();
+
+  if (!propCheck || propCheck.status !== 'active') {
+    throw new Error('La propuesta no existe o ya fue cerrada.');
+  }
+  if (propCheck.expires_at && new Date(propCheck.expires_at) <= new Date()) {
+    throw new Error('La propuesta de votación ha expirado (24 horas). Ya no se aceptan votos.');
   }
 
   // Verificar voto duplicado antes de insertar
@@ -1265,14 +1282,74 @@ export async function castVote({ proposalId, userId, voteChoice }) {
       proposal_id: validProposalId,
       user_id: validUserId,
       vote: voteChoice,
-      weight: votingPower
+      weight: fallbackPower
     })
     .select()
     .single();
 
   if (error) throw new Error(error.message || 'Error al registrar el voto.');
 
-  return { success: true, voting_power: votingPower, vote: voteChoice, ...data };
+  return { success: true, voting_power: fallbackPower, vote: voteChoice, ...data };
+}
+
+/**
+ * Cierra propuestas expiradas llamando al RPC close_expired_proposals.
+ * Llamar al inicio de fetchProposals para mantener estados sincronizados
+ * cuando pg_cron no está disponible en el plan de Supabase.
+ */
+export async function closeExpiredProposals() {
+  try {
+    const { data, error } = await supabase.rpc('close_expired_proposals');
+    if (!error && data != null) {
+      if (data > 0) console.info(`Gobernanza: ${data} propuesta(s) cerradas automáticamente.`);
+    }
+  } catch (err) {
+    console.warn('close_expired_proposals RPC no disponible:', err.message);
+  }
+}
+
+/**
+ * Obtiene las notificaciones de gobernanza del usuario (no leídas primero).
+ */
+export async function fetchGovernanceNotifications(userId) {
+  if (!userId) return [];
+  try {
+    const { data, error } = await supabase
+      .from('governance_notifications')
+      .select('*, proposal:proposals(title, status), asset:assets(title)')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.warn('Aviso al leer notificaciones de gobernanza:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn('Error al obtener notificaciones:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Marca una o todas las notificaciones de gobernanza como leídas.
+ */
+export async function markGovernanceNotificationsRead(userId, notifId = null) {
+  if (!userId) return;
+  try {
+    let query = supabase
+      .from('governance_notifications')
+      .update({ is_read: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+
+    if (notifId) query = query.eq('id', notifId);
+
+    await query;
+  } catch (err) {
+    console.warn('Error al marcar notificaciones como leídas:', err.message);
+  }
 }
 
 // ----------------------------------------------------
