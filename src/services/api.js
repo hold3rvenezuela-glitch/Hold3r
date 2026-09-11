@@ -1022,49 +1022,67 @@ export async function investInAsset({ userId, wallet, asset, investmentUsdt, sig
 // ----------------------------------------------------
 
 /**
- * Calcula el poder de voto del usuario = suma de shares_percentage en asset_shares.
- * Retorna 0 si no posee acciones. Admins sin acciones retornan 1.0.
+ * Obtiene el mapa de poder de voto del usuario desglosado por activo.
+ * Retorna: { totalPower: number, byAsset: { [asset_id]: number } }
+ * Admins sin fracciones retornan totalPower = 1.0 y byAsset = {}.
  */
 export async function getUserVotingPower(userId, userRole = 'investor') {
-  if (!userId) return 0;
+  if (!userId) return { totalPower: 0, byAsset: {} };
 
   try {
     const { data, error } = await supabase
       .from(TABLES.ASSET_SHARES)
-      .select('shares_percentage')
+      .select('asset_id, shares_percentage')
       .eq('user_id', userId)
       .gt('shares_percentage', 0);
 
     if (error) {
       console.warn('Aviso al calcular poder de voto:', error.message);
-      return userRole === 'admin' ? 1.0 : 0;
+      const fallback = userRole === 'admin' ? 1.0 : 0;
+      return { totalPower: fallback, byAsset: {} };
     }
 
-    const totalPower = (data || []).reduce((acc, s) => acc + Number(s.shares_percentage || 0), 0);
+    const byAsset = {};
+    let totalPower = 0;
+    for (const s of (data || [])) {
+      const pct = Number(s.shares_percentage || 0);
+      byAsset[s.asset_id] = (byAsset[s.asset_id] || 0) + pct;
+      totalPower += pct;
+    }
 
-    // Admin sin fracciones propias: poder simbólico = 1.0
-    if (userRole === 'admin' && totalPower === 0) return 1.0;
+    // Admin sin fracciones propias: poder simbólico global = 1.0
+    if (userRole === 'admin' && totalPower === 0) {
+      return { totalPower: 1.0, byAsset: {} };
+    }
 
-    return totalPower;
+    return { totalPower, byAsset };
   } catch (err) {
     console.warn('Error al obtener poder de voto:', err.message);
-    return userRole === 'admin' ? 1.0 : 0;
+    const fallback = userRole === 'admin' ? 1.0 : 0;
+    return { totalPower: fallback, byAsset: {} };
   }
 }
 
 /**
- * Obtiene las propuestas de gobernanza.
- * - Admin: ve todas las propuestas.
- * - Investor: pre-verifica tenencia antes de consultar Supabase.
- *   Si no tiene tenencia O si RLS retorna error 403/42501, devuelve
- *   { proposals: [], votingPower: 0, hasAccess: false } limpiamente.
+ * Obtiene las propuestas de gobernanza filtradas por tenencia ESPECÍFICA de activo.
+ * - Admin: ve todas las propuestas, con votingPower = 1.0 si no tiene acciones.
+ * - Investor: solo ve propuestas del activo donde tiene shares_percentage > 0.
+ *   Cada propuesta incluye `userVotingPower` con el poder del usuario para ese activo.
+ *   Si RLS bloquea o el usuario no tiene ninguna acción, retorna hasAccess: false.
  */
 export async function fetchProposals(userId = null, userRole = 'investor') {
-  // Pre-chequeo de tenencia para investors (evita consulta innecesaria a Supabase)
-  let votingPower = 0;
+  const isAdmin = userRole === 'admin';
+
+  // Obtener poder de voto por activo antes de consultar propuestas
+  let totalPower = 0;
+  let byAsset = {};
   if (userId) {
-    votingPower = await getUserVotingPower(userId, userRole);
-    if (userRole !== 'admin' && votingPower === 0) {
+    const vp = await getUserVotingPower(userId, userRole);
+    totalPower = vp.totalPower;
+    byAsset    = vp.byAsset;
+
+    // Inversores sin ninguna acción: bloquear sin consultar Supabase
+    if (!isAdmin && totalPower === 0) {
       return { proposals: [], votingPower: 0, hasAccess: false };
     }
   }
@@ -1079,12 +1097,7 @@ export async function fetchProposals(userId = null, userRole = 'investor') {
     .order('created_at', { ascending: false });
 
   if (error) {
-    // Cualquier código de acceso denegado — mostrar estado vacío limpio
-    const denied = [
-      '42501',       // PostgreSQL: insufficient_privilege
-      'PGRST301',    // Supabase: JWT error / unauthorized
-      'PGRST116',    // Supabase: single row not found (edge case)
-    ];
+    const denied = ['42501', 'PGRST301', 'PGRST116'];
     if (
       denied.includes(error.code) ||
       error.status === 403 ||
@@ -1092,17 +1105,33 @@ export async function fetchProposals(userId = null, userRole = 'investor') {
       error.message?.toLowerCase().includes('policy') ||
       error.message?.toLowerCase().includes('permission')
     ) {
-      console.warn('RLS gobernanza: acceso denegado por política de seguridad.', error.code, error.message);
+      console.warn('RLS gobernanza: acceso denegado.', error.code, error.message);
       return { proposals: [], votingPower: 0, hasAccess: false };
     }
     console.warn('Aviso al leer propuestas:', error.message);
-    return { proposals: [], votingPower, hasAccess: false };
+    return { proposals: [], votingPower: totalPower, hasAccess: false };
   }
 
+  const allProposals = data || [];
+
+  // Enriquecer cada propuesta con el poder de voto del usuario para ese activo específico
+  const enriched = allProposals
+    .filter(prop => {
+      // Admins ven todo; inversores solo ven propuestas de activos donde tienen acciones
+      if (isAdmin) return true;
+      return (byAsset[prop.asset_id] || 0) > 0;
+    })
+    .map(prop => ({
+      ...prop,
+      userVotingPower: isAdmin
+        ? (byAsset[prop.asset_id] || totalPower)  // admin: su poder en ese activo (o 1.0)
+        : (byAsset[prop.asset_id] || 0)            // investor: exactamente su % en ese activo
+    }));
+
   return {
-    proposals: data || [],
-    votingPower,
-    hasAccess: true
+    proposals: enriched,
+    votingPower: totalPower,
+    hasAccess: enriched.length > 0 || isAdmin
   };
 }
 

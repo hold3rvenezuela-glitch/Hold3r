@@ -11,6 +11,7 @@ import {
 export default function GovernanceView({ userProfile, assets }) {
   const [proposals, setProposals]           = useState([]);
   const [votingPower, setVotingPower]        = useState(0);
+  const [byAssetPower, setByAssetPower]      = useState({});
   const [hasAccess, setHasAccess]            = useState(false);
   const [governanceOrders, setGovernanceOrders] = useState([]);
   const [loading, setLoading]               = useState(true);
@@ -26,6 +27,11 @@ export default function GovernanceView({ userProfile, assets }) {
   const [submitting, setSubmitting]           = useState(false);
 
   const isAdmin = userProfile?.role === 'admin';
+
+  // Assets donde el usuario tiene acciones (para el modal de nueva propuesta)
+  const assetsWithShares = isAdmin
+    ? assets
+    : assets.filter(a => (byAssetPower[a.id] || 0) > 0);
 
   // ── Loaders ──────────────────────────────────────────────────────────────
   const loadGovernanceOrders = async () => {
@@ -49,6 +55,10 @@ export default function GovernanceView({ userProfile, assets }) {
       const result = await fetchProposals(userProfile?.id, userProfile?.role || 'investor');
       setProposals(result.proposals);
       setVotingPower(result.votingPower);
+      setByAssetPower(result.proposals.reduce((acc, p) => {
+        acc[p.asset_id] = p.userVotingPower || 0;
+        return acc;
+      }, {}));
       setHasAccess(result.hasAccess || isAdmin);
     } catch (err) {
       console.error('Error al cargar propuestas:', err);
@@ -80,7 +90,7 @@ export default function GovernanceView({ userProfile, assets }) {
     }
   };
 
-  const handleVote = async (proposalId, voteChoice) => {
+  const handleVote = async (proposalId, voteChoice, propUserPower) => {
     if (!userProfile?.id) {
       alert('Debes iniciar sesión para votar.');
       return;
@@ -92,9 +102,9 @@ export default function GovernanceView({ userProfile, assets }) {
     setVotingId(proposalId + voteChoice);
     try {
       const result = await castVote({ proposalId, userId: userProfile.id, voteChoice });
-      // Refrescar propuestas para actualizar barras de votación
       await loadProposals();
-      alert(`✅ Voto registrado con un poder de ${Number(result.voting_power || votingPower).toFixed(4)}% de participación.`);
+      const power = Number(result.voting_power ?? propUserPower ?? votingPower);
+      alert(`✅ Voto registrado con un poder de ${power.toFixed(4)}% de participación en este activo.`);
     } catch (err) {
       alert(err.message || 'Error al registrar el voto.');
     } finally {
@@ -117,6 +127,13 @@ export default function GovernanceView({ userProfile, assets }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Abrir modal con el primer activo donde el usuario tiene acciones
+  const openNewProposalModal = () => {
+    const first = assetsWithShares[0];
+    if (first) setSelectedAssetId(first.id);
+    setShowNewModal(true);
   };
 
   // ── Helpers de cálculo ponderado ──────────────────────────────────────────
@@ -166,12 +183,9 @@ export default function GovernanceView({ userProfile, assets }) {
           )}
 
           {/* Crear Propuesta — solo socios con tenencia o admins */}
-          {userProfile && (hasAccess || isAdmin) && (
+          {userProfile && (hasAccess || isAdmin) && assetsWithShares.length > 0 && (
             <button
-              onClick={() => {
-                if (assets.length > 0) setSelectedAssetId(assets[0].id);
-                setShowNewModal(true);
-              }}
+              onClick={openNewProposalModal}
               className="btn-primary text-xs shadow-indigo-500/20"
             >
               <Plus className="w-4 h-4" />
@@ -293,9 +307,11 @@ export default function GovernanceView({ userProfile, assets }) {
           {proposals.map(prop => {
             const asset      = prop.asset || {};
             const votesList  = prop.votes || [];
+            const propPower  = Number(prop.userVotingPower || 0);  // poder específico del usuario en ESTE activo
             const { yesPower, noPower, totalPower, yesPercent, noPercent } = getWeightedResults(votesList);
             const userVoted  = votesList.find(v => v.user_id === userProfile?.id);
             const totalCount = votesList.length;
+            const canVote    = isAdmin || propPower > 0;
 
             return (
               <div key={prop.id} className="glass-panel p-6 border border-white/10 space-y-4">
@@ -336,7 +352,7 @@ export default function GovernanceView({ userProfile, assets }) {
                 <div className="flex items-center justify-between pt-2">
                   <div className="flex items-center gap-1.5 text-[10px] font-mono text-neutral-500">
                     <BarChart2 className="w-3 h-3 text-indigo-400" />
-                    Tu poder: <strong className="text-indigo-300">{Number(votingPower).toFixed(4)}%</strong>
+                    Tu poder en este activo: <strong className="text-indigo-300">{propPower.toFixed(4)}%</strong>
                   </div>
 
                   {userVoted ? (
@@ -348,16 +364,16 @@ export default function GovernanceView({ userProfile, assets }) {
                   ) : (
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleVote(prop.id, 'yes')}
-                        disabled={!!votingId || (!hasAccess && !isAdmin)}
+                        onClick={() => handleVote(prop.id, 'yes', propPower)}
+                        disabled={!!votingId || !canVote}
                         className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         {votingId === prop.id + 'yes' ? 'Registrando...' : 'Votar A Favor'}
                       </button>
                       <button
-                        onClick={() => handleVote(prop.id, 'no')}
-                        disabled={!!votingId || (!hasAccess && !isAdmin)}
+                        onClick={() => handleVote(prop.id, 'no', propPower)}
+                        disabled={!!votingId || !canVote}
                         className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <XCircle className="w-4 h-4" />
@@ -388,13 +404,15 @@ export default function GovernanceView({ userProfile, assets }) {
             <form onSubmit={handleCreateProposalSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-neutral-300 mb-1">Activo Asociado:</label>
-                <select
+                              <select
                   value={selectedAssetId}
                   onChange={(e) => setSelectedAssetId(e.target.value)}
                   className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none"
                 >
-                  {assets.map(a => (
-                    <option key={a.id} value={a.id}>{a.title}</option>
+                  {assetsWithShares.map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.title} {byAssetPower[a.id] ? `(Tu participación: ${Number(byAssetPower[a.id]).toFixed(4)}%)` : ''}
+                    </option>
                   ))}
                 </select>
               </div>
