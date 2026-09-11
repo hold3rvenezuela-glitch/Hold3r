@@ -407,6 +407,8 @@ export default function GovernanceView({ userProfile, assets }) {
             const userVoted  = votesList.find(v => v.user_id === userProfile?.id);
             const totalCount = votesList.length;
             const canVote    = isAdmin || propPower > 0;
+            const isClosed   = prop.status !== 'active' || (prop.expires_at && new Date(prop.expires_at) < new Date());
+            const winner     = yesPower > noPower ? 'approved' : noPower > yesPower ? 'rejected' : 'tie';
 
             return (
               <div key={prop.id} className="glass-panel p-6 border border-white/10 space-y-4">
