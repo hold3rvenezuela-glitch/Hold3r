@@ -128,17 +128,61 @@ export async function signOutUser() {
 }
 
 export async function getUserProfile(userId) {
+  if (!userId) return null;
+
   const { data, error } = await supabase
     .from(TABLES.PROFILES)
     .select('*')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
-  if (error && error.code !== 'PGRST116') {
-    console.error('Error al obtener perfil:', error);
+  if (error) {
+    console.error('Error al obtener perfil:', error.message);
   }
 
-  if (!data) return null;
+  let profile = data;
+
+  // Si el perfil aún no existe en public.profiles al iniciar sesión / verificar sesión por primera vez, crearlo automáticamente de forma segura
+  if (!profile && userId) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && user.id === userId) {
+        const email = user.email || '';
+        const meta = user.user_metadata || {};
+        const cleanEmail = email.trim().toLowerCase();
+        const assignedRole = cleanEmail === 'hold3rvenezuela@gmail.com' ? 'admin' : (meta.role || 'investor');
+        const fallbackName = meta.full_name || email.split('@')[0] || 'Inversor Registrado';
+        const fallbackDoc = meta.document_id || '';
+        const fallbackNick = meta.nickname || fallbackName.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+
+        const newProfile = {
+          id: userId,
+          full_name: fallbackName,
+          document_id: fallbackDoc,
+          nickname: fallbackNick,
+          role: assignedRole,
+          kyc_status: 'none',
+          created_at: new Date().toISOString()
+        };
+
+        const { data: createdProfile, error: createErr } = await supabase
+          .from(TABLES.PROFILES)
+          .upsert(newProfile, { onConflict: 'id' })
+          .select()
+          .single();
+
+        if (!createErr && createdProfile) {
+          profile = createdProfile;
+        } else {
+          profile = newProfile;
+        }
+      }
+    } catch (autoErr) {
+      console.warn('Creación automática de respaldo para perfil:', autoErr.message);
+    }
+  }
+
+  if (!profile) return null;
 
   // Verificación cruzada con kyc_verifications para garantizar sincronización en tiempo real
   try {
@@ -148,8 +192,8 @@ export async function getUserProfile(userId) {
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (kyc?.status && kyc.status !== data.kyc_status) {
-      data.kyc_status = kyc.status;
+    if (kyc?.status && kyc.status !== profile.kyc_status) {
+      profile.kyc_status = kyc.status;
       // Sincronizar tabla profiles en segundo plano
       supabase.from(TABLES.PROFILES).update({ kyc_status: kyc.status }).eq('id', userId).then();
     }
@@ -157,7 +201,7 @@ export async function getUserProfile(userId) {
     // Silencioso
   }
 
-  return data;
+  return profile;
 }
 
 export async function getUserWallet(userId) {
@@ -1349,7 +1393,34 @@ export async function fetchWalletTransactions(userId) {
  * en estado 'IN_REVIEW_GOVERNANCE' (48h Derecho de Tanteo).
  */
 export async function createMarketplaceOrder({ sellerId, shareId, assetId, sharesPercentage, priceUsdt }) {
-  // Generar hash de bloqueo simulado / transferencia a Escrow
+  // 1. Validación estricta de tenencia en asset_shares
+  const { data: userShare, error: shareErr } = await supabase
+    .from(TABLES.ASSET_SHARES)
+    .select('shares_percentage, user_id')
+    .eq('id', shareId)
+    .eq('user_id', sellerId)
+    .single();
+
+  if (shareErr || !userShare || Number(userShare.shares_percentage || 0) <= 0) {
+    throw new Error('Validación fallida: No posees fracciones vigentes (> 0%) de este activo para revender.');
+  }
+
+  if (Number(sharesPercentage) > Number(userShare.shares_percentage)) {
+    throw new Error(`Validación fallida: Intentas revender (${sharesPercentage}%), lo cual supera tu tenencia disponible (${userShare.shares_percentage}%).`);
+  }
+
+  // 2. Bloqueo preventivo de órdenes duplicadas activas (IN_REVIEW_GOVERNANCE o PUBLIC_MARKET)
+  const { data: activeOrders, error: activeErr } = await supabase
+    .from(TABLES.MARKETPLACE_ORDERS)
+    .select('id, status')
+    .eq('share_id', shareId)
+    .in('status', ['IN_REVIEW_GOVERNANCE', 'PUBLIC_MARKET']);
+
+  if (!activeErr && activeOrders && activeOrders.length > 0) {
+    throw new Error('Bloqueo preventivo: Esta fracción ya se encuentra listada con una orden activa en la Bóveda Escrow / Mercado Secundario.');
+  }
+
+  // 3. Generar hash de bloqueo simulado / transferencia a Escrow
   const escrowTxHash = '0xescrow_' + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 10);
 
   const { data, error } = await supabase
@@ -1378,11 +1449,32 @@ export async function createMarketplaceOrder({ sellerId, shareId, assetId, share
 }
 
 /**
- * Obtiene las órdenes en fase de Gobernanza (Derecho de Tanteo 48h)
- * visibles para socios y administradores. Promueve automáticamente expiradas a PUBLIC_MARKET.
+ * Obtiene las órdenes activas (en Escrow / Mercado Secundario) creadas por un usuario.
  */
-export async function fetchGovernanceMarketOrders() {
+export async function fetchUserActiveMarketOrders(sellerId) {
+  if (!sellerId) return [];
+
   const { data, error } = await supabase
+    .from(TABLES.MARKETPLACE_ORDERS)
+    .select('*')
+    .eq('seller_id', sellerId)
+    .in('status', ['IN_REVIEW_GOVERNANCE', 'PUBLIC_MARKET']);
+
+  if (error) {
+    console.warn('Aviso al obtener órdenes activas del usuario:', error.message);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
+ * Obtiene las órdenes en fase de Gobernanza (Derecho de Tanteo 48h)
+ * visibles para socios y administradores. Promueve automáticamente expiradas a PUBLIC_MARKET
+ * y excluye automáticamente las ofertas creadas por el usuario autenticado actual.
+ */
+export async function fetchGovernanceMarketOrders(currentUserId = null) {
+  let query = supabase
     .from(TABLES.MARKETPLACE_ORDERS)
     .select(`
       *,
@@ -1390,6 +1482,13 @@ export async function fetchGovernanceMarketOrders() {
       seller:profiles!seller_id (full_name, document_id, avatar_url)
     `)
     .order('created_at', { ascending: false });
+
+  // Excluir órdenes creadas por el usuario autenticado actual si se proporciona currentUserId
+  if (currentUserId) {
+    query = query.neq('seller_id', currentUserId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Error al consultar ofertas de gobernanza:', error.message);
@@ -1408,9 +1507,10 @@ export async function fetchGovernanceMarketOrders() {
 
 /**
  * Obtiene las órdenes disponibles públicamente en el Mercado Secundario.
+ * Excluye las órdenes creadas por el usuario autenticado actual.
  */
-export async function fetchPublicMarketOrders() {
-  const allOrders = await fetchGovernanceMarketOrders();
+export async function fetchPublicMarketOrders(currentUserId = null) {
+  const allOrders = await fetchGovernanceMarketOrders(currentUserId);
   return allOrders.filter(o => o.status === 'PUBLIC_MARKET');
 }
 

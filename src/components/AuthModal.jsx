@@ -38,16 +38,21 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         }
         // 1. Autenticar con Supabase Auth
         const authData = await signInUser({ email, password });
-        const userId = authData.user.id;
+        const userId = authData.user?.id;
 
-        // 2. Leer el rol REAL desde public.profiles (no desde user_metadata)
-        const profile = await getUserProfile(userId);
+        // 2. Leer o auto-crear el perfil desde public.profiles
+        let profile = await getUserProfile(userId);
 
-        if (!profile) {
-          throw new Error('No se encontró el perfil de este usuario en la plataforma.');
+        if (!profile && userId) {
+          profile = {
+            id: userId,
+            full_name: authData.user?.user_metadata?.full_name || email.split('@')[0],
+            document_id: authData.user?.user_metadata?.document_id || '',
+            role: email.trim().toLowerCase() === 'hold3rvenezuela@gmail.com' ? 'admin' : 'investor'
+          };
         }
 
-        // 3. Notificar a App.jsx con el perfil real
+        // 3. Notificar a App.jsx con el perfil
         onAuthSuccess(profile);
       }
       onClose();

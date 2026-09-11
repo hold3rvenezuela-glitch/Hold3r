@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText, X, Download, Copy, Check, Award, Shield, ArrowDownLeft, ArrowUpRight, Wallet, History } from 'lucide-react';
+import { Layers, ShieldCheck, DollarSign, Calendar, ExternalLink, RefreshCw, FileText, X, Download, Copy, Check, Award, Shield, ArrowDownLeft, ArrowUpRight, Wallet, History, Ban } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { fetchUserShares, fetchUserWalletMovements, createMarketplaceOrder } from '../services/api';
+import { fetchUserShares, fetchUserWalletMovements, createMarketplaceOrder, cancelMarketplaceOrder, fetchUserActiveMarketOrders } from '../services/api';
 
 export function generateCorporateContractPDF({ share, userProfile, asset, purchasedDate, txHash, numAmount }) {
   const doc = new jsPDF();
@@ -205,9 +205,11 @@ export function generateCorporateContractPDF({ share, userProfile, asset, purcha
 
 export default function MyInvestmentsView({ userProfile, initialShares = [], onRefresh }) {
   const [shares, setShares] = useState(initialShares);
+  const [activeOrders, setActiveOrders] = useState([]);
   const [movements, setMovements] = useState([]);
   const [loadingMovements, setLoadingMovements] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
   const [selectedContractShare, setSelectedContractShare] = useState(null);
   const [resaleShare, setResaleShare] = useState(null);
   const [resalePrice, setResalePrice] = useState('');
@@ -222,8 +224,19 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
     } else {
       loadShares();
     }
+    loadActiveOrders();
     loadMovements();
   }, [initialShares, userProfile?.id]);
+
+  const loadActiveOrders = async () => {
+    if (!userProfile?.id) return;
+    try {
+      const orders = await fetchUserActiveMarketOrders(userProfile.id);
+      setActiveOrders(orders);
+    } catch (err) {
+      console.error('Error al cargar órdenes de reventa activas:', err);
+    }
+  };
 
   const loadShares = async () => {
     if (!userProfile?.id) return;
@@ -255,7 +268,26 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
 
   const handleManualRefresh = () => {
     loadShares();
+    loadActiveOrders();
     if (onRefresh) onRefresh();
+  };
+
+  const handleCancelOrder = async (orderId) => {
+    if (!orderId || !userProfile?.id) return;
+    if (!confirm('¿Confirmas que deseas cancelar la orden de reventa? Las fracciones se liberarán inmediatamente de la Bóveda Escrow y retornarán a tu portafolio activo.')) {
+      return;
+    }
+    setCancellingOrderId(orderId);
+    try {
+      await cancelMarketplaceOrder({ orderId, sellerId: userProfile.id });
+      await loadShares();
+      await loadActiveOrders();
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      alert(err.message || 'Error al cancelar la orden de reventa.');
+    } finally {
+      setCancellingOrderId(null);
+    }
   };
 
   const handleCopyHash = (hashStr) => {
@@ -341,10 +373,19 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
             const txHash = share.signed_contract_hash || '0x7f8a9b...';
             const bscScanUrl = `https://bscscan.com/tx/${txHash}`;
 
+            // Buscar si esta fracción específica tiene una orden activa de reventa en Escrow
+            const activeOrderForShare = activeOrders.find(o => o.share_id === share.id);
+            const isListedInEscrow = Boolean(activeOrderForShare);
+            const hasShares = Number(share.shares_percentage || 0) > 0;
+
             return (
               <div 
                 key={share.id || `share-${idx}`}
-                className="glass-panel p-5 border border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 hover:border-emerald-500/40 transition-colors"
+                className={`glass-panel p-5 border flex flex-col md:flex-row items-start md:items-center justify-between gap-5 transition-colors ${
+                  isListedInEscrow 
+                    ? 'border-amber-500/50 bg-amber-950/10' 
+                    : 'border-white/10 hover:border-emerald-500/40'
+                }`}
               >
                 {/* Left: Asset info */}
                 <div className="flex items-center gap-4">
@@ -354,9 +395,16 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
                     className="w-16 h-16 rounded-xl object-cover border border-white/10 shrink-0 bg-neutral-900"
                   />
                   <div className="space-y-1">
-                    <span className={`badge-category badge-${asset.category || 'real_estate'}`}>
-                      {asset.category === 'real_estate' ? 'Bienes Raíces' : asset.category === 'heavy_machinery' ? 'Maquinaria' : 'Vehículos'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`badge-category badge-${asset.category || 'real_estate'}`}>
+                        {asset.category === 'real_estate' ? 'Bienes Raíces' : asset.category === 'heavy_machinery' ? 'Maquinaria' : 'Vehículos'}
+                      </span>
+                      {isListedInEscrow && (
+                        <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30 font-mono">
+                          En Reventa (Escrow)
+                        </span>
+                      )}
+                    </div>
                     <h4 className="text-base font-bold text-white">{asset.title || 'Activo Tokenizado RWA'}</h4>
                     <p className="text-xs text-neutral-400 font-mono">
                       Adquirido el: {share.purchased_at ? new Date(share.purchased_at).toLocaleDateString('es-VE') : 'Hoy'}
@@ -407,12 +455,37 @@ export default function MyInvestmentsView({ userProfile, initialShares = [], onR
                     >
                       <FileText className="w-3.5 h-3.5" /> Certificado
                     </button>
-                    <button
-                      onClick={() => setResaleShare(share)}
-                      className="btn-secondary text-[11px] py-1.5 px-2 font-bold text-amber-400 border-amber-500/30 hover:bg-amber-500/20 flex items-center justify-center gap-1"
-                    >
-                      <DollarSign className="w-3.5 h-3.5 text-amber-400" /> Revender
-                    </button>
+                    
+                    {isListedInEscrow ? (
+                      <button
+                        onClick={() => handleCancelOrder(activeOrderForShare.id)}
+                        disabled={cancellingOrderId === activeOrderForShare.id}
+                        className="btn-secondary text-[11px] py-1.5 px-2 font-bold text-rose-400 border-rose-500/40 bg-rose-950/30 hover:bg-rose-500/20 flex items-center justify-center gap-1 transition-all"
+                        title="Cancelar orden activa de reventa y liberar de la Bóveda Escrow"
+                      >
+                        <Ban className={`w-3.5 h-3.5 ${cancellingOrderId === activeOrderForShare.id ? 'animate-spin' : ''}`} />
+                        {cancellingOrderId === activeOrderForShare.id ? 'Cancelando...' : 'Cancelar Reventa'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (!hasShares) {
+                            alert('Aún no posees fracciones participativas vigentes en este activo para revender.');
+                            return;
+                          }
+                          setResaleShare(share);
+                        }}
+                        disabled={!hasShares}
+                        className={`btn-secondary text-[11px] py-1.5 px-2 font-bold flex items-center justify-center gap-1 ${
+                          hasShares
+                            ? 'text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                            : 'text-neutral-600 border-neutral-800 opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        {hasShares ? 'Revender' : 'Sin Fracciones'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
