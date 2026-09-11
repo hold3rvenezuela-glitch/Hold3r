@@ -1055,14 +1055,16 @@ export async function getUserVotingPower(userId, userRole = 'investor') {
 /**
  * Obtiene las propuestas de gobernanza.
  * - Admin: ve todas las propuestas.
- * - Investor: solo ve propuestas si posee acciones activas (shares_percentage > 0).
- *   Si no tiene tenencia, retorna [] en lugar de lanzar error.
+ * - Investor: pre-verifica tenencia antes de consultar Supabase.
+ *   Si no tiene tenencia O si RLS retorna error 403/42501, devuelve
+ *   { proposals: [], votingPower: 0, hasAccess: false } limpiamente.
  */
 export async function fetchProposals(userId = null, userRole = 'investor') {
-  // Inversores sin tenencia activa: retornar lista vacía sin consultar
-  if (userId && userRole !== 'admin') {
-    const votingPower = await getUserVotingPower(userId, userRole);
-    if (votingPower === 0) {
+  // Pre-chequeo de tenencia para investors (evita consulta innecesaria a Supabase)
+  let votingPower = 0;
+  if (userId) {
+    votingPower = await getUserVotingPower(userId, userRole);
+    if (userRole !== 'admin' && votingPower === 0) {
       return { proposals: [], votingPower: 0, hasAccess: false };
     }
   }
@@ -1077,17 +1079,25 @@ export async function fetchProposals(userId = null, userRole = 'investor') {
     .order('created_at', { ascending: false });
 
   if (error) {
-    // RLS bloqueó la consulta (usuario sin tenencia): retornar vacío limpiamente
-    if (error.code === '42501' || error.status === 403 || error.message?.includes('policy')) {
-      console.warn('RLS gobernanza: acceso denegado (sin tenencia activa).', error.message);
+    // Cualquier código de acceso denegado — mostrar estado vacío limpio
+    const denied = [
+      '42501',       // PostgreSQL: insufficient_privilege
+      'PGRST301',    // Supabase: JWT error / unauthorized
+      'PGRST116',    // Supabase: single row not found (edge case)
+    ];
+    if (
+      denied.includes(error.code) ||
+      error.status === 403 ||
+      error.status === 401 ||
+      error.message?.toLowerCase().includes('policy') ||
+      error.message?.toLowerCase().includes('permission')
+    ) {
+      console.warn('RLS gobernanza: acceso denegado por política de seguridad.', error.code, error.message);
       return { proposals: [], votingPower: 0, hasAccess: false };
     }
-    console.warn('Aviso de lectura de propuestas:', error.message);
-    return { proposals: [], votingPower: 0, hasAccess: false };
+    console.warn('Aviso al leer propuestas:', error.message);
+    return { proposals: [], votingPower, hasAccess: false };
   }
-
-  // Calcular poder de voto del usuario actual
-  const votingPower = userId ? await getUserVotingPower(userId, userRole) : 0;
 
   return {
     proposals: data || [],
@@ -1096,23 +1106,66 @@ export async function fetchProposals(userId = null, userRole = 'investor') {
   };
 }
 
+/**
+ * Crea una propuesta de gobernanza mediante el RPC validado create_governance_proposal.
+ * El RPC verifica en el servidor que el usuario tenga tenencia activa del activo.
+ * Fallback a inserción directa si el RPC no está disponible en la instancia actual.
+ */
 export async function createProposal({ assetId, title, description }) {
-  const validAssetId = (assetId && assetId.length === 36) ? assetId : generateUUID();
-  const payload = {
-    asset_id: validAssetId,
-    title,
-    description,
-    status: 'active',
-    created_at: new Date().toISOString()
-  };
+  if (!assetId || !title || !description) {
+    throw new Error('Todos los campos son obligatorios para crear una propuesta.');
+  }
+  const validAssetId = (assetId && assetId.length === 36) ? assetId : null;
+  if (!validAssetId) throw new Error('ID de activo inválido.');
 
+  // 1. Intentar RPC validada (verifica tenencia específica en el activo en el servidor)
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('create_governance_proposal', {
+      p_asset_id:    validAssetId,
+      p_title:       title.trim(),
+      p_description: description.trim()
+    });
+
+    if (!rpcError && rpcData?.success) {
+      return { id: rpcData.proposal_id, asset_id: rpcData.asset_id, title: rpcData.title };
+    }
+
+    if (rpcError) {
+      // Error de negocio del servidor (sin tenencia, activo no existe, etc.) — propagar
+      throw new Error(rpcError.message || 'No se pudo crear la propuesta.');
+    }
+  } catch (rpcErr) {
+    // Si es un error de negocio del RPC, propagarlo directamente
+    if (
+      rpcErr.message &&
+      !rpcErr.message.includes('function') &&
+      !rpcErr.message.includes('does not exist') &&
+      !rpcErr.message.includes('not found')
+    ) {
+      throw rpcErr;
+    }
+    console.warn('RPC create_governance_proposal no disponible, usando fallback directo:', rpcErr.message);
+  }
+
+  // 2. Fallback: inserción directa (RPC aún no ejecutado en Supabase)
   const { data, error } = await supabase
     .from(TABLES.PROPOSALS)
-    .insert(payload)
+    .insert({
+      asset_id:    validAssetId,
+      title:       title.trim(),
+      description: description.trim(),
+      status:      'active',
+      created_at:  new Date().toISOString()
+    })
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === '42501' || error.status === 403) {
+      throw new Error('Acceso denegado: no posees fracciones activas del activo seleccionado para crear una propuesta.');
+    }
+    throw new Error(error.message || 'Error al crear la propuesta de gobernanza.');
+  }
   return data;
 }
 
