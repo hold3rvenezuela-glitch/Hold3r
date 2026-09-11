@@ -198,6 +198,11 @@ export default function GovernanceView({ userProfile, assets }) {
     return { expired: false, label: h > 0 ? `${h}h ${m}m restantes` : `${m}m restantes` };
   };
 
+  const getRemainingLabel = (expiresAt) => {
+    const timeInfo = getTimeRemaining(expiresAt);
+    return timeInfo ? timeInfo.label : 'Sin expiración';
+  };
+
   // Handler para marcar notificaciones como leídas y abrir panel
   const handleOpenNotifPanel = async () => {
     setShowNotifPanel(v => !v);
