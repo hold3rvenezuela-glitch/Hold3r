@@ -1304,7 +1304,7 @@ export async function closeExpiredProposals() {
       if (data > 0) console.info(`Gobernanza: ${data} propuesta(s) cerradas automáticamente.`);
     }
   } catch (err) {
-    console.warn('close_expired_proposals RPC no disponible:', err.message);
+    // Si el RPC no está creado aún en Supabase, evitar ruido en la consola
   }
 }
 
