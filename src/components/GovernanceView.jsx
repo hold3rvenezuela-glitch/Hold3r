@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Vote, CheckCircle2, XCircle, Plus, Clock, ShoppingCart,
-  RefreshCw, ShieldCheck, BarChart2, AlertTriangle, Bell, Trophy, Minus
+  RefreshCw, ShieldCheck, BarChart2, AlertTriangle, Bell, Trophy, Minus,
+  Trash2, Edit3
 } from 'lucide-react';
 import {
-  fetchProposals, castVote, createProposal,
+  fetchProposals, castVote, createProposal, deleteProposal, updateProposal,
   fetchGovernanceMarketOrders, buyMarketplaceOrderInternal,
   closeExpiredProposals, fetchGovernanceNotifications, markGovernanceNotificationsRead
 } from '../services/api';
@@ -161,6 +162,39 @@ export default function GovernanceView({ userProfile, assets }) {
       alert(err.message || 'Error al crear la propuesta.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteProposal = async (proposalId) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar esta propuesta durante tu ventana de gracia (5m)?')) {
+      return;
+    }
+    try {
+      await deleteProposal({ proposalId, userId: userProfile.id });
+      alert('Propuesta eliminada correctamente.');
+      loadProposals();
+    } catch (err) {
+      alert(err.message || 'No se pudo eliminar la propuesta.');
+    }
+  };
+
+  const handleEditProposal = async (prop) => {
+    const newTitle = window.prompt('Editar título de la propuesta:', prop.title);
+    if (!newTitle) return;
+    const newDesc = window.prompt('Editar descripción de la propuesta:', prop.description);
+    if (!newDesc) return;
+
+    try {
+      await updateProposal({
+        proposalId: prop.id,
+        userId: userProfile.id,
+        title: newTitle,
+        description: newDesc
+      });
+      alert('Propuesta actualizada correctamente.');
+      loadProposals();
+    } catch (err) {
+      alert(err.message || 'No se pudo editar la propuesta.');
     }
   };
 
@@ -414,6 +448,9 @@ export default function GovernanceView({ userProfile, assets }) {
             const canVote    = isAdmin || propPower > 0;
             const isClosed   = prop.status !== 'active' || (prop.expires_at && new Date(prop.expires_at) < new Date());
             const winner     = yesPower > noPower ? 'approved' : noPower > yesPower ? 'rejected' : 'tie';
+            const isCreator  = prop.created_by ? prop.created_by === userProfile?.id : true;
+            const createdMs  = prop.created_at ? new Date(prop.created_at).getTime() : Date.now();
+            const inGracePeriod = (Date.now() - createdMs) <= 5 * 60 * 1000;
 
             return (
               <div key={prop.id} className="glass-panel p-6 border border-white/10 space-y-4">
@@ -433,17 +470,40 @@ export default function GovernanceView({ userProfile, assets }) {
                     <h3 className="text-lg font-bold text-white mt-1.5">{prop.title}</h3>
                     <p className="text-xs text-neutral-300 mt-1 leading-relaxed">{prop.description}</p>
                   </div>
-                  <span className={`badge-category ${
-                    isClosed
-                      ? winner === 'approved' ? 'badge-status-active bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : winner === 'rejected' ? 'badge-status-sold bg-rose-500/20 text-rose-300 border-rose-500/30'
-                        : 'bg-neutral-700 text-neutral-300 border-neutral-600'
-                      : 'badge-status-funding'
-                  }`}>
-                    {isClosed
-                      ? winner === 'approved' ? ' Aprobada' : winner === 'rejected' ? ' Rechazada' : ' Empate (Cerrada)'
-                      : 'Votación Abierta'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {/* Botones de acción para ventana de gracia de 5 minutos */}
+                    {isCreator && totalCount === 0 && inGracePeriod && !isClosed && (
+                      <div className="flex items-center gap-1.5 mr-2">
+                        <button
+                          onClick={() => handleEditProposal(prop)}
+                          className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/40 border border-indigo-500/30 text-xs font-semibold transition-all flex items-center gap-1"
+                          title="Editar propuesta (Ventana de gracia de 5m)"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Editar</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProposal(prop.id)}
+                          className="p-1.5 rounded-lg bg-rose-500/20 text-rose-300 hover:bg-rose-500/40 border border-rose-500/30 text-xs font-semibold transition-all flex items-center gap-1"
+                          title="Eliminar propuesta (Ventana de gracia de 5m)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Eliminar</span>
+                        </button>
+                      </div>
+                    )}
+                    <span className={`badge-category ${
+                      isClosed
+                        ? winner === 'approved' ? 'badge-status-active bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          : winner === 'rejected' ? 'badge-status-sold bg-rose-500/20 text-rose-300 border-rose-500/30'
+                          : 'bg-neutral-700 text-neutral-300 border-neutral-600'
+                        : 'badge-status-funding'
+                    }`}>
+                      {isClosed
+                        ? winner === 'approved' ? ' Aprobada' : winner === 'rejected' ? ' Rechazada' : ' Empate (Cerrada)'
+                        : 'Votación Abierta'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Barra de votos PONDERADA */}

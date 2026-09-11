@@ -1293,6 +1293,124 @@ export async function castVote({ proposalId, userId, voteChoice }) {
 }
 
 /**
+ * Elimina una propuesta durante la ventana de gracia de 5 minutos si tiene 0 votos.
+ * Vía RPC delete_governance_proposal o mediante consulta a DB.
+ */
+export async function deleteProposal({ proposalId, userId }) {
+  if (!proposalId || !userId) throw new Error('ID de propuesta y usuario requeridos.');
+
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('delete_governance_proposal', {
+      p_proposal_id: proposalId,
+      p_user_id: userId
+    });
+
+    if (!rpcError && rpcData?.success) {
+      return rpcData;
+    }
+
+    if (rpcError) {
+      throw new Error(rpcError.message || 'Error al eliminar la propuesta.');
+    }
+  } catch (rpcErr) {
+    if (rpcErr.message && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
+      throw rpcErr;
+    }
+    console.warn('RPC delete_governance_proposal no disponible, usando validación cliente fallback.');
+  }
+
+  // Fallback con validaciones estrictas
+  const { data: prop, error: propErr } = await supabase
+    .from(TABLES.PROPOSALS)
+    .select('*, votes:votes(id)')
+    .eq('id', proposalId)
+    .single();
+
+  if (propErr || !prop) throw new Error('Propuesta no encontrada.');
+  if (prop.created_by && prop.created_by !== userId) throw new Error('Solo el creador puede eliminar la propuesta.');
+
+  const createdAt = new Date(prop.created_at).getTime();
+  const now = Date.now();
+  const minutesPassed = (now - createdAt) / (1000 * 60);
+
+  if (minutesPassed > 5) {
+    throw new Error('Transcurridos los 5 minutos de gracia, la propuesta es inmutable y no se puede eliminar.');
+  }
+
+  if (prop.votes && prop.votes.length > 0) {
+    throw new Error('La propuesta ya recibió votos. Es inmutable y no se puede eliminar.');
+  }
+
+  const { error: delErr } = await supabase
+    .from(TABLES.PROPOSALS)
+    .delete()
+    .eq('id', proposalId);
+
+  if (delErr) throw new Error(delErr.message || 'Error al eliminar la propuesta.');
+  return { success: true };
+}
+
+/**
+ * Edita el título o descripción de una propuesta durante la ventana de gracia de 5 minutos si tiene 0 votos.
+ */
+export async function updateProposal({ proposalId, userId, title, description }) {
+  if (!proposalId || !userId || !title || !description) throw new Error('Todos los campos son requeridos.');
+
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('update_governance_proposal', {
+      p_proposal_id: proposalId,
+      p_user_id: userId,
+      p_title: title.trim(),
+      p_description: description.trim()
+    });
+
+    if (!rpcError && rpcData?.success) {
+      return rpcData;
+    }
+
+    if (rpcError) {
+      throw new Error(rpcError.message || 'Error al editar la propuesta.');
+    }
+  } catch (rpcErr) {
+    if (rpcErr.message && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
+      throw rpcErr;
+    }
+    console.warn('RPC update_governance_proposal no disponible, usando validación cliente fallback.');
+  }
+
+  const { data: prop, error: propErr } = await supabase
+    .from(TABLES.PROPOSALS)
+    .select('*, votes:votes(id)')
+    .eq('id', proposalId)
+    .single();
+
+  if (propErr || !prop) throw new Error('Propuesta no encontrada.');
+  if (prop.created_by && prop.created_by !== userId) throw new Error('Solo el creador puede editar la propuesta.');
+
+  const createdAt = new Date(prop.created_at).getTime();
+  const now = Date.now();
+  const minutesPassed = (now - createdAt) / (1000 * 60);
+
+  if (minutesPassed > 5) {
+    throw new Error('Transcurridos los 5 minutos de gracia, la propuesta es inmutable y no se puede editar.');
+  }
+
+  if (prop.votes && prop.votes.length > 0) {
+    throw new Error('La propuesta ya recibió votos. Es inmutable y no se puede editar.');
+  }
+
+  const { data: updated, error: updateErr } = await supabase
+    .from(TABLES.PROPOSALS)
+    .update({ title: title.trim(), description: description.trim() })
+    .eq('id', proposalId)
+    .select()
+    .single();
+
+  if (updateErr) throw new Error(updateErr.message || 'Error al actualizar la propuesta.');
+  return updated;
+}
+
+/**
  * Cierra propuestas expiradas llamando al RPC close_expired_proposals.
  * Llamar al inicio de fetchProposals para mantener estados sincronizados
  * cuando pg_cron no está disponible en el plan de Supabase.

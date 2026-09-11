@@ -199,3 +199,107 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
    SET search_path = public, pg_catalog;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 6. ELIMINACIÓN Y EDICIÓN DE PROPUESTAS: VENTANA DE GRACIA 5 MINUTOS & 0 VOTOS
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- 6.1 RPC para eliminar propuesta en ventana de gracia (5m y 0 votos)
+CREATE OR REPLACE FUNCTION delete_governance_proposal(
+  p_proposal_id UUID,
+  p_user_id     UUID DEFAULT auth.uid()
+) RETURNS JSONB AS $$
+DECLARE
+  v_proposal RECORD;
+  v_vote_count INT;
+BEGIN
+  SELECT * INTO v_proposal FROM public.proposals WHERE id = p_proposal_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'La propuesta especificada no existe.';
+  END IF;
+
+  -- Solo el creador de la propuesta puede eliminarla
+  IF v_proposal.created_by IS NOT NULL AND v_proposal.created_by <> p_user_id THEN
+    RAISE EXCEPTION 'Solo el creador original de la propuesta tiene permitido eliminarla.';
+  END IF;
+
+  -- Regla de 5 minutos
+  IF (now() - v_proposal.created_at) > INTERVAL '5 minutes' THEN
+    RAISE EXCEPTION 'Transcurridos los 5 minutos de gracia, la propuesta es inmutable y no se puede eliminar.';
+  END IF;
+
+  -- Regla de 0 votos
+  SELECT COUNT(*) INTO v_vote_count FROM public.votes WHERE proposal_id = p_proposal_id;
+  IF v_vote_count > 0 THEN
+    RAISE EXCEPTION 'La propuesta ya recibió votos. Es inmutable y no se puede eliminar.';
+  END IF;
+
+  DELETE FROM public.proposals WHERE id = p_proposal_id;
+
+  RETURN jsonb_build_object('success', true, 'deleted_id', p_proposal_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+   SET search_path = public, pg_catalog;
+
+-- 6.2 RPC para editar propuesta en ventana de gracia (5m y 0 votos)
+CREATE OR REPLACE FUNCTION update_governance_proposal(
+  p_proposal_id UUID,
+  p_user_id     UUID DEFAULT auth.uid(),
+  p_title       TEXT DEFAULT NULL,
+  p_description TEXT DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_proposal RECORD;
+  v_vote_count INT;
+BEGIN
+  SELECT * INTO v_proposal FROM public.proposals WHERE id = p_proposal_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'La propuesta especificada no existe.';
+  END IF;
+
+  IF v_proposal.created_by IS NOT NULL AND v_proposal.created_by <> p_user_id THEN
+    RAISE EXCEPTION 'Solo el creador original de la propuesta tiene permitido editarla.';
+  END IF;
+
+  IF (now() - v_proposal.created_at) > INTERVAL '5 minutes' THEN
+    RAISE EXCEPTION 'Transcurridos los 5 minutos de gracia, la propuesta es inmutable y no se puede editar.';
+  END IF;
+
+  SELECT COUNT(*) INTO v_vote_count FROM public.votes WHERE proposal_id = p_proposal_id;
+  IF v_vote_count > 0 THEN
+    RAISE EXCEPTION 'La propuesta ya recibió votos. Es inmutable y no se puede editar.';
+  END IF;
+
+  UPDATE public.proposals
+  SET title       = COALESCE(TRIM(p_title), title),
+      description = COALESCE(TRIM(p_description), description)
+  WHERE id = p_proposal_id;
+
+  RETURN jsonb_build_object('success', true, 'proposal_id', p_proposal_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+   SET search_path = public, pg_catalog;
+
+-- 6.3 Políticas RLS directas para DELETE y UPDATE en public.proposals
+DROP POLICY IF EXISTS "Grace period delete proposals" ON public.proposals;
+CREATE POLICY "Grace period delete proposals"
+ON public.proposals
+FOR DELETE
+TO authenticated
+USING (
+  created_by = auth.uid()
+  AND (now() - created_at) <= INTERVAL '5 minutes'
+  AND NOT EXISTS (SELECT 1 FROM public.votes WHERE proposal_id = proposals.id)
+);
+
+DROP POLICY IF EXISTS "Grace period update proposals" ON public.proposals;
+CREATE POLICY "Grace period update proposals"
+ON public.proposals
+FOR UPDATE
+TO authenticated
+USING (
+  created_by = auth.uid()
+  AND (now() - created_at) <= INTERVAL '5 minutes'
+  AND NOT EXISTS (SELECT 1 FROM public.votes WHERE proposal_id = proposals.id)
+);
