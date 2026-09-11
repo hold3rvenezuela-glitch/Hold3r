@@ -1471,9 +1471,9 @@ export async function fetchUserActiveMarketOrders(sellerId) {
 /**
  * Obtiene las órdenes en fase de Gobernanza (Derecho de Tanteo 48h)
  * visibles para socios y administradores. Promueve automáticamente expiradas a PUBLIC_MARKET
- * y excluye automáticamente las ofertas creadas por el usuario autenticado actual.
+ * y filtra por tenencia previa si el usuario es de rol 'investor'.
  */
-export async function fetchGovernanceMarketOrders(currentUserId = null) {
+export async function fetchGovernanceMarketOrders(currentUserId = null, userRole = 'investor') {
   let query = supabase
     .from(TABLES.MARKETPLACE_ORDERS)
     .select(`
@@ -1496,13 +1496,39 @@ export async function fetchGovernanceMarketOrders(currentUserId = null) {
   }
 
   const now = new Date();
-  // Promoción automática de expiradas a PUBLIC_MARKET
-  return (data || []).map(order => {
+  const allOrders = (data || []).map(order => {
     if (order.status === 'IN_REVIEW_GOVERNANCE' && new Date(order.governance_expires_at) <= now) {
       return { ...order, status: 'PUBLIC_MARKET' };
     }
     return order;
   });
+
+  // Si el usuario es 'admin', tiene visibilidad general de control
+  if (userRole === 'admin' || !currentUserId) {
+    return allOrders;
+  }
+
+  // Si el usuario es 'investor', verificar en asset_shares en qué activos posee o ha poseído participación previa
+  try {
+    const { data: userShares } = await supabase
+      .from(TABLES.ASSET_SHARES)
+      .select('asset_id')
+      .eq('user_id', currentUserId);
+
+    const userAssetIds = new Set((userShares || []).map(s => s.asset_id));
+
+    // Filtrar: En la fase de Gobernanza (IN_REVIEW_GOVERNANCE - 48h), solo los accionistas previos de ese activo pueden ver la oferta.
+    // Si la orden ya pasó a PUBLIC_MARKET, cualquier usuario puede verla.
+    return allOrders.filter(order => {
+      if (order.status === 'IN_REVIEW_GOVERNANCE') {
+        return userAssetIds.has(order.asset_id);
+      }
+      return true;
+    });
+  } catch (err) {
+    console.warn('Error al verificar tenencia previa del inversor:', err);
+    return allOrders.filter(order => order.status !== 'IN_REVIEW_GOVERNANCE');
+  }
 }
 
 /**

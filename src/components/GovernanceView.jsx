@@ -19,7 +19,7 @@ export default function GovernanceView({ userProfile, assets }) {
   const loadGovernanceOrders = async () => {
     setLoadingOrders(true);
     try {
-      const orders = await fetchGovernanceMarketOrders(userProfile?.id);
+      const orders = await fetchGovernanceMarketOrders(userProfile?.id, userProfile?.role || 'investor');
       setGovernanceOrders(orders);
     } catch (err) {
       console.error('Error al cargar ofertas de tanteo:', err);
