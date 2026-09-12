@@ -1384,8 +1384,9 @@ export async function updateProposal({ proposalId, userId, title, description })
       p_description: description.trim()
     });
 
-    if (!rpcError && rpcData?.success) {
-      return rpcData;
+    const res = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    if (!rpcError && (res?.success || rpcData?.success || rpcData === true)) {
+      return res || { success: true };
     }
 
     if (rpcError) {

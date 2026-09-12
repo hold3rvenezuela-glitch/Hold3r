@@ -572,11 +572,11 @@ export default function GovernanceView({ userProfile, assets }) {
 
       {/* ── Modal Nueva Propuesta ──────────────────────────────────────── */}
       {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-          <div className="glass-panel w-full max-w-lg p-6 border border-indigo-500/40 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <div className="glass-panel w-full max-w-lg p-6 border border-indigo-500/40 shadow-2xl relative max-h-[90vh] overflow-y-auto my-auto">
             <button
               onClick={() => setShowNewModal(false)}
-              className="absolute top-4 right-4 text-neutral-400 hover:text-white text-xl font-bold"
+              className="absolute top-4 right-4 text-neutral-400 hover:text-white text-xl font-bold z-10"
             >✕</button>
             <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <Vote className="w-5 h-5 text-indigo-400" />

@@ -156,8 +156,6 @@ COMMENT ON FUNCTION cast_weighted_vote IS
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 5. ACTUALIZAR create_governance_proposal (ya valida por activo — confirmar)
--- ─────────────────────────────────────────────────────────────────────────────
 -- 5. ACTUALIZAR create_governance_proposal: Límite estricto de 7 Días + Activo + Tenencia
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -165,10 +163,15 @@ CREATE OR REPLACE FUNCTION create_governance_proposal(
   p_asset_id    UUID,
   p_title       TEXT,
   p_description TEXT
-) RETURNS JSONB AS $$
+) RETURNS TABLE (
+  success     BOOLEAN,
+  proposal_id UUID,
+  asset_id    UUID,
+  title       TEXT
+) AS $$
 DECLARE
   v_caller_id       UUID := auth.uid();
-  v_proposal_id     UUID;
+  v_new_id          UUID;
   v_last_proposal   TIMESTAMPTZ;
   v_days_since_last NUMERIC;
 BEGIN
@@ -193,7 +196,8 @@ BEGIN
   -- ── LÍMITE ESTRICTO DE 7 DÍAS ──
   SELECT MAX(created_at) INTO v_last_proposal
   FROM public.proposals
-  WHERE created_by = v_caller_id;
+  WHERE created_by = v_caller_id
+     OR created_by = auth.uid();
 
   IF v_last_proposal IS NOT NULL THEN
     v_days_since_last := EXTRACT(EPOCH FROM (now() - v_last_proposal)) / 86400.0;
@@ -206,14 +210,9 @@ BEGIN
 
   INSERT INTO public.proposals (asset_id, title, description, status, created_by, expires_at, created_at)
   VALUES (p_asset_id, TRIM(p_title), TRIM(p_description), 'active', v_caller_id, now() + INTERVAL '24 hours', now())
-  RETURNING id INTO v_proposal_id;
+  RETURNING proposals.id INTO v_new_id;
 
-  RETURN jsonb_build_object(
-    'success',     true,
-    'proposal_id', v_proposal_id,
-    'asset_id',    p_asset_id,
-    'title',       p_title
-  );
+  RETURN QUERY SELECT true, v_new_id, p_asset_id, p_title;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
    SET search_path = public, pg_catalog;
@@ -227,7 +226,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER
 CREATE OR REPLACE FUNCTION delete_governance_proposal(
   p_proposal_id UUID,
   p_user_id     UUID DEFAULT auth.uid()
-) RETURNS JSONB AS $$
+) RETURNS TABLE (
+  success    BOOLEAN,
+  deleted_id UUID
+) AS $$
 DECLARE
   v_proposal RECORD;
   v_vote_count INT;
@@ -255,7 +257,7 @@ BEGIN
 
   DELETE FROM public.proposals WHERE id = p_proposal_id;
 
-  RETURN jsonb_build_object('success', true, 'deleted_id', p_proposal_id);
+  RETURN QUERY SELECT true, p_proposal_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
    SET search_path = public, pg_catalog;
@@ -266,7 +268,10 @@ CREATE OR REPLACE FUNCTION update_governance_proposal(
   p_user_id     UUID DEFAULT auth.uid(),
   p_title       TEXT DEFAULT NULL,
   p_description TEXT DEFAULT NULL
-) RETURNS JSONB AS $$
+) RETURNS TABLE (
+  success     BOOLEAN,
+  proposal_id UUID
+) AS $$
 DECLARE
   v_proposal RECORD;
   v_vote_count INT;
@@ -294,7 +299,7 @@ BEGIN
       description = COALESCE(NULLIF(TRIM(p_description), ''), description)
   WHERE id = p_proposal_id;
 
-  RETURN jsonb_build_object('success', true, 'proposal_id', p_proposal_id);
+  RETURN QUERY SELECT true, p_proposal_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
    SET search_path = public, pg_catalog;
