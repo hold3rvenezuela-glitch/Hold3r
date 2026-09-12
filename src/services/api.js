@@ -1136,9 +1136,8 @@ export async function fetchProposals(userId = null, userRole = 'investor') {
 }
 
 /**
- * Crea una propuesta de gobernanza mediante el RPC validado create_governance_proposal.
- * El RPC verifica en el servidor que el usuario tenga tenencia activa del activo.
- * Fallback a inserción directa si el RPC no está disponible en la instancia actual.
+ * Crea una propuesta de gobernanza mediante consulta directa a Supabase.
+ * Valida tenencia de acciones y el límite estricto de 7 días antes de insertar.
  */
 export async function createProposal({ assetId, title, description }) {
   if (!assetId || !title || !description) {
@@ -1147,55 +1146,50 @@ export async function createProposal({ assetId, title, description }) {
   const validAssetId = (assetId && assetId.length === 36) ? assetId : null;
   if (!validAssetId) throw new Error('ID de activo inválido.');
 
-  // 1. Intentar RPC validada (verifica tenencia específica en el activo en el servidor)
-  try {
-    const { data: rpcData, error: rpcError } = await supabase.rpc('create_governance_proposal', {
-      p_asset_id:    validAssetId,
-      p_title:       title.trim(),
-      p_description: description.trim()
-    });
-
-    if (!rpcError && rpcData?.success) {
-      return { id: rpcData.proposal_id, asset_id: rpcData.asset_id, title: rpcData.title };
-    }
-
-    if (rpcError) {
-      // Error de negocio del servidor (sin tenencia, activo no existe, etc.) — propagar
-      throw new Error(rpcError.message || 'No se pudo crear la propuesta.');
-    }
-  } catch (rpcErr) {
-    // Si es un error de negocio del RPC, propagarlo directamente
-    if (
-      rpcErr.message &&
-      !rpcErr.message.includes('function') &&
-      !rpcErr.message.includes('does not exist') &&
-      !rpcErr.message.includes('not found')
-    ) {
-      throw rpcErr;
-    }
-    console.warn('RPC create_governance_proposal no disponible, usando fallback directo:', rpcErr.message);
-  }
-
-  // 2. Fallback: inserción directa con verificación de límite de 7 días
   const { data: { user } } = await supabase.auth.getUser();
-  if (user?.id) {
-    const { data: lastProp } = await supabase
-      .from(TABLES.PROPOSALS)
-      .select('created_at')
-      .eq('created_by', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
+  if (!user?.id) throw new Error('Usuario no autenticado.');
+
+  // 1. Validar tenencia del activo seleccionado (a menos que sea admin)
+  const { data: profile } = await supabase
+    .from(TABLES.PROFILES)
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const isAdmin = profile?.role === 'admin';
+
+  if (!isAdmin) {
+    const { data: share } = await supabase
+      .from('asset_shares')
+      .select('shares_percentage')
+      .eq('user_id', user.id)
+      .eq('asset_id', validAssetId)
+      .gt('shares_percentage', 0)
       .maybeSingle();
 
-    if (lastProp?.created_at) {
-      const daysPassed = (Date.now() - new Date(lastProp.created_at).getTime()) / (1000 * 60 * 60 * 24);
-      if (daysPassed < 7) {
-        const daysLeft = Math.ceil(7 - daysPassed);
-        throw new Error(`Límite de creación: debes esperar ${daysLeft} día(s) más antes de crear una nueva propuesta. Solo puedes crear una propuesta cada 7 días.`);
-      }
+    if (!share) {
+      throw new Error('Acceso denegado: no posees fracciones activas del activo seleccionado para crear una propuesta.');
     }
   }
 
+  // 2. Validar límite estricto de 7 días (verificar si el usuario creó una propuesta en los últimos 7 días)
+  const { data: lastProp } = await supabase
+    .from(TABLES.PROPOSALS)
+    .select('created_at')
+    .eq('created_by', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastProp?.created_at) {
+    const daysPassed = (Date.now() - new Date(lastProp.created_at).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysPassed < 7) {
+      const daysLeft = Math.ceil(7 - daysPassed);
+      throw new Error(`Límite de creación: debes esperar ${daysLeft} día(s) más antes de crear una nueva propuesta. Solo puedes crear una propuesta cada 7 días.`);
+    }
+  }
+
+  // 3. Inserción directa
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from(TABLES.PROPOSALS)
@@ -1204,7 +1198,7 @@ export async function createProposal({ assetId, title, description }) {
       title:       title.trim(),
       description: description.trim(),
       status:      'active',
-      created_by:  user?.id || null,
+      created_by:  user.id,
       expires_at:  expiresAt,
       created_at:  new Date().toISOString()
     })
@@ -1313,33 +1307,11 @@ export async function castVote({ proposalId, userId, voteChoice }) {
 }
 
 /**
- * Elimina una propuesta durante la ventana de gracia de 5 minutos si tiene 0 votos.
- * Vía RPC delete_governance_proposal o mediante consulta a DB.
+ * Elimina una propuesta mediante consulta directa a Supabase durante la ventana de gracia de 5 minutos si tiene 0 votos.
  */
 export async function deleteProposal({ proposalId, userId }) {
   if (!proposalId || !userId) throw new Error('ID de propuesta y usuario requeridos.');
 
-  try {
-    const { data: rpcData, error: rpcError } = await supabase.rpc('delete_governance_proposal', {
-      p_proposal_id: proposalId,
-      p_user_id: userId
-    });
-
-    if (!rpcError && rpcData?.success) {
-      return rpcData;
-    }
-
-    if (rpcError) {
-      throw new Error(rpcError.message || 'Error al eliminar la propuesta.');
-    }
-  } catch (rpcErr) {
-    if (rpcErr.message && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
-      throw rpcErr;
-    }
-    console.warn('RPC delete_governance_proposal no disponible, usando validación cliente fallback.');
-  }
-
-  // Fallback con validaciones estrictas
   const { data: prop, error: propErr } = await supabase
     .from(TABLES.PROPOSALS)
     .select('*, votes:votes(id)')
@@ -1371,33 +1343,10 @@ export async function deleteProposal({ proposalId, userId }) {
 }
 
 /**
- * Edita el título o descripción de una propuesta durante la ventana de gracia de 5 minutos si tiene 0 votos.
+ * Edita el título o descripción de una propuesta mediante consulta directa a Supabase durante la ventana de gracia de 5 minutos si tiene 0 votos.
  */
 export async function updateProposal({ proposalId, userId, title, description }) {
   if (!proposalId || !userId || !title || !description) throw new Error('Todos los campos son requeridos.');
-
-  try {
-    const { data: rpcData, error: rpcError } = await supabase.rpc('update_governance_proposal', {
-      p_proposal_id: proposalId,
-      p_user_id: userId,
-      p_title: title.trim(),
-      p_description: description.trim()
-    });
-
-    const res = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-    if (!rpcError && (res?.success || rpcData?.success || rpcData === true)) {
-      return res || { success: true };
-    }
-
-    if (rpcError) {
-      throw new Error(rpcError.message || 'Error al editar la propuesta.');
-    }
-  } catch (rpcErr) {
-    if (rpcErr.message && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
-      throw rpcErr;
-    }
-    console.warn('RPC update_governance_proposal no disponible, usando validación cliente fallback.');
-  }
 
   const { data: prop, error: propErr } = await supabase
     .from(TABLES.PROPOSALS)
