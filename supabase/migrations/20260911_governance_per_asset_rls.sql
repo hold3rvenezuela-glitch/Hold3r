@@ -158,6 +158,8 @@ COMMENT ON FUNCTION cast_weighted_vote IS
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. ACTUALIZAR create_governance_proposal (ya valida por activo — confirmar)
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 5. ACTUALIZAR create_governance_proposal: Límite estricto de 7 Días + Activo + Tenencia
+-- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION create_governance_proposal(
   p_asset_id    UUID,
@@ -165,8 +167,10 @@ CREATE OR REPLACE FUNCTION create_governance_proposal(
   p_description TEXT
 ) RETURNS JSONB AS $$
 DECLARE
-  v_caller_id   UUID := auth.uid();
-  v_proposal_id UUID;
+  v_caller_id       UUID := auth.uid();
+  v_proposal_id     UUID;
+  v_last_proposal   TIMESTAMPTZ;
+  v_days_since_last NUMERIC;
 BEGIN
   IF p_title IS NULL OR TRIM(p_title) = '' THEN
     RAISE EXCEPTION 'El título de la propuesta no puede estar vacío.';
@@ -186,8 +190,22 @@ BEGIN
       'para crear una propuesta de gobernanza.';
   END IF;
 
-  INSERT INTO public.proposals (asset_id, title, description, status, created_at)
-  VALUES (p_asset_id, TRIM(p_title), TRIM(p_description), 'active', now())
+  -- ── LÍMITE ESTRICTO DE 7 DÍAS ──
+  SELECT MAX(created_at) INTO v_last_proposal
+  FROM public.proposals
+  WHERE created_by = v_caller_id;
+
+  IF v_last_proposal IS NOT NULL THEN
+    v_days_since_last := EXTRACT(EPOCH FROM (now() - v_last_proposal)) / 86400.0;
+    IF v_days_since_last < 7.0 THEN
+      RAISE EXCEPTION
+        'Límite de creación: debes esperar % días más antes de crear una nueva propuesta. Solo puedes crear una propuesta cada 7 días.',
+        CEIL(7.0 - v_days_since_last);
+    END IF;
+  END IF;
+
+  INSERT INTO public.proposals (asset_id, title, description, status, created_by, expires_at, created_at)
+  VALUES (p_asset_id, TRIM(p_title), TRIM(p_description), 'active', v_caller_id, now() + INTERVAL '24 hours', now())
   RETURNING id INTO v_proposal_id;
 
   RETURN jsonb_build_object(
@@ -272,8 +290,8 @@ BEGIN
   END IF;
 
   UPDATE public.proposals
-  SET title       = COALESCE(TRIM(p_title), title),
-      description = COALESCE(TRIM(p_description), description)
+  SET title       = COALESCE(NULLIF(TRIM(p_title), ''), title),
+      description = COALESCE(NULLIF(TRIM(p_description), ''), description)
   WHERE id = p_proposal_id;
 
   RETURN jsonb_build_object('success', true, 'proposal_id', p_proposal_id);

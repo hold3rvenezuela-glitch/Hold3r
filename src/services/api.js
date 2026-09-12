@@ -1176,7 +1176,26 @@ export async function createProposal({ assetId, title, description }) {
     console.warn('RPC create_governance_proposal no disponible, usando fallback directo:', rpcErr.message);
   }
 
-  // 2. Fallback: inserción directa (RPC aún no ejecutado en Supabase)
+  // 2. Fallback: inserción directa con verificación de límite de 7 días
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user?.id) {
+    const { data: lastProp } = await supabase
+      .from(TABLES.PROPOSALS)
+      .select('created_at')
+      .eq('created_by', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastProp?.created_at) {
+      const daysPassed = (Date.now() - new Date(lastProp.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysPassed < 7) {
+        const daysLeft = Math.ceil(7 - daysPassed);
+        throw new Error(`Límite de creación: debes esperar ${daysLeft} día(s) más antes de crear una nueva propuesta. Solo puedes crear una propuesta cada 7 días.`);
+      }
+    }
+  }
+
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from(TABLES.PROPOSALS)
@@ -1185,6 +1204,7 @@ export async function createProposal({ assetId, title, description }) {
       title:       title.trim(),
       description: description.trim(),
       status:      'active',
+      created_by:  user?.id || null,
       expires_at:  expiresAt,
       created_at:  new Date().toISOString()
     })
