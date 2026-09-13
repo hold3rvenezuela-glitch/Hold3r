@@ -448,7 +448,8 @@ export default function GovernanceView({ userProfile, assets }) {
             const canVote    = isAdmin || propPower > 0;
             const isClosed   = prop.status !== 'active' || (prop.expires_at && new Date(prop.expires_at) < new Date());
             const winner     = yesPower > noPower ? 'approved' : noPower > yesPower ? 'rejected' : 'tie';
-            const isCreator  = prop.created_by ? prop.created_by === userProfile?.id : true;
+            const creatorId  = prop.user_id || prop.created_by;
+            const isCreator  = creatorId ? creatorId === userProfile?.id : true;
             const createdMs  = prop.created_at ? new Date(prop.created_at).getTime() : Date.now();
             const inGracePeriod = (Date.now() - createdMs) <= 5 * 60 * 1000;
 
@@ -572,8 +573,8 @@ export default function GovernanceView({ userProfile, assets }) {
 
       {/* ── Modal Nueva Propuesta ──────────────────────────────────────── */}
       {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-fade-in p-4">
-          <div className="glass-panel w-full max-w-lg p-6 border border-indigo-500/40 shadow-2xl relative max-h-[85vh] overflow-y-auto m-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fade-in">
+          <div className="w-full max-w-lg p-6 bg-slate-900 border border-indigo-500/40 rounded-2xl shadow-2xl relative my-auto max-h-[85vh] overflow-y-auto">
             <button
               onClick={() => setShowNewModal(false)}
               className="absolute top-4 right-4 text-neutral-400 hover:text-white text-xl font-bold z-10"

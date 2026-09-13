@@ -1176,7 +1176,7 @@ export async function createProposal({ assetId, title, description }) {
   const { data: lastProp } = await supabase
     .from(TABLES.PROPOSALS)
     .select('created_at')
-    .eq('created_by', user.id)
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -1198,7 +1198,7 @@ export async function createProposal({ assetId, title, description }) {
       title:       title.trim(),
       description: description.trim(),
       status:      'active',
-      created_by:  user.id,
+      user_id:     user.id,
       expires_at:  expiresAt,
       created_at:  new Date().toISOString()
     })
@@ -1319,7 +1319,8 @@ export async function deleteProposal({ proposalId, userId }) {
     .single();
 
   if (propErr || !prop) throw new Error('Propuesta no encontrada.');
-  if (prop.created_by && prop.created_by !== userId) throw new Error('Solo el creador puede eliminar la propuesta.');
+  const creatorId = prop.user_id || prop.created_by;
+  if (creatorId && creatorId !== userId) throw new Error('Solo el creador puede eliminar la propuesta.');
 
   const createdAt = new Date(prop.created_at).getTime();
   const now = Date.now();
@@ -1355,7 +1356,8 @@ export async function updateProposal({ proposalId, userId, title, description })
     .single();
 
   if (propErr || !prop) throw new Error('Propuesta no encontrada.');
-  if (prop.created_by && prop.created_by !== userId) throw new Error('Solo el creador puede editar la propuesta.');
+  const creatorId = prop.user_id || prop.created_by;
+  if (creatorId && creatorId !== userId) throw new Error('Solo el creador puede editar la propuesta.');
 
   const createdAt = new Date(prop.created_at).getTime();
   const now = Date.now();
