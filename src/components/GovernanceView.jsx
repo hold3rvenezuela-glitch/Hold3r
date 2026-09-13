@@ -578,8 +578,8 @@ export default function GovernanceView({ userProfile, assets }) {
 
       {/* ── Modal Nueva Propuesta ──────────────────────────────────────── */}
       {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#121824] border border-[#1f2937] rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto relative shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-[#0d131f] border border-white/10 rounded-2xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto relative shadow-2xl my-auto">
             <button
               onClick={() => setShowNewModal(false)}
               className="absolute top-4 right-4 text-neutral-400 hover:text-white text-xl font-bold z-10"
@@ -595,7 +595,7 @@ export default function GovernanceView({ userProfile, assets }) {
                 <select
                   value={selectedAssetId}
                   onChange={(e) => setSelectedAssetId(e.target.value)}
-                  className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none"
+                  className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none focus:border-indigo-500"
                 >
                   {assetsWithShares.map(a => (
                     <option key={a.id} value={a.id}>
@@ -613,7 +613,7 @@ export default function GovernanceView({ userProfile, assets }) {
                   value={proposalTitle}
                   onChange={(e) => setProposalTitle(e.target.value)}
                   placeholder="Ej. Renovación de contrato de alquiler 2027"
-                  className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none"
+                  className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -625,7 +625,7 @@ export default function GovernanceView({ userProfile, assets }) {
                   value={proposalDesc}
                   onChange={(e) => setProposalDesc(e.target.value)}
                   placeholder="Explica los detalles de la propuesta para la comunidad de holders..."
-                  className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none"
+                  className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none focus:border-indigo-500"
                 />
               </div>
 
@@ -642,23 +642,23 @@ export default function GovernanceView({ userProfile, assets }) {
         </div>
       )}
 
-      {/* ── Toast de Notificación Flotante Estilo Oscuro HOLD3R ────────── */}
+      {/* ── Toast de Notificación Flotante Fijo Superior Estilo Oscuro HOLD3R ────────── */}
       {toast.show && (
-        <div className="fixed bottom-6 right-6 z-50 animate-bounce-in max-w-md">
-          <div className={`p-4 rounded-xl shadow-2xl border backdrop-blur-md flex items-center gap-3 text-xs font-semibold ${
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-11/12 max-w-md animate-fade-in pointer-events-auto">
+          <div className={`p-4 rounded-2xl shadow-2xl border backdrop-blur-xl flex items-start gap-3 text-xs font-semibold ${
             toast.type === 'error'
-              ? 'bg-rose-950/90 border-rose-500/50 text-rose-200'
+              ? 'bg-[#18080c]/95 border-rose-500/60 text-rose-200 shadow-rose-950/50'
               : toast.type === 'success'
-              ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
-              : 'bg-neutral-900/95 border-indigo-500/40 text-neutral-200'
+              ? 'bg-[#061810]/95 border-emerald-500/60 text-emerald-200 shadow-emerald-950/50'
+              : 'bg-[#0d131f]/95 border-indigo-500/60 text-neutral-200 shadow-indigo-950/50'
           }`}>
-            {toast.type === 'error' && <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />}
-            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
-            {toast.type === 'info' && <Bell className="w-5 h-5 text-indigo-400 shrink-0" />}
-            <span className="leading-snug">{toast.message}</span>
+            {toast.type === 'error' && <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />}
+            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />}
+            {toast.type === 'info' && <Bell className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />}
+            <span className="leading-relaxed flex-1">{toast.message}</span>
             <button
               onClick={() => setToast({ show: false, message: '', type: 'info' })}
-              className="ml-auto text-neutral-400 hover:text-white font-bold text-sm"
+              className="text-neutral-400 hover:text-white font-bold text-sm ml-2 shrink-0"
             >
               ✕
             </button>
