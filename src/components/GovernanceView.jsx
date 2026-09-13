@@ -31,6 +31,14 @@ export default function GovernanceView({ userProfile, assets }) {
   const [proposalTitle, setProposalTitle]     = useState('');
   const [proposalDesc, setProposalDesc]       = useState('');
   const [submitting, setSubmitting]           = useState(false);
+  const [toast, setToast]                    = useState({ show: false, message: '', type: 'info' });
+
+  const showToast = (message, type = 'info') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast({ show: false, message: '', type: 'info' });
+    }, 4500);
+  };
 
   const isAdmin = userProfile?.role === 'admin';
   const unreadCount = notifications.filter(n => !n.is_read).length;
@@ -111,16 +119,16 @@ export default function GovernanceView({ userProfile, assets }) {
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleBuyInternal = async (orderId) => {
     if (!userProfile?.id) {
-      alert('Debes iniciar sesión como socio o administrador.');
+      showToast('Debes iniciar sesión como socio o administrador.', 'error');
       return;
     }
     setBuyingOrderId(orderId);
     try {
       await buyMarketplaceOrderInternal({ orderId, buyerId: userProfile.id });
-      alert('¡Compra completada! Los tokens fueron transferidos desde la Bóveda Escrow a tu wallet.');
+      showToast('¡Compra completada! Los tokens fueron transferidos desde la Bóveda Escrow a tu wallet.', 'success');
       loadGovernanceOrders();
     } catch (err) {
-      alert(err.message || 'Error al procesar la compra interna.');
+      showToast(err.message || 'Error al procesar la compra interna.', 'error');
     } finally {
       setBuyingOrderId(null);
     }
@@ -128,11 +136,11 @@ export default function GovernanceView({ userProfile, assets }) {
 
   const handleVote = async (proposalId, voteChoice, propUserPower) => {
     if (!userProfile?.id) {
-      alert('Debes iniciar sesión para votar.');
+      showToast('Debes iniciar sesión para votar.', 'error');
       return;
     }
     if (!hasAccess && !isAdmin) {
-      alert('No posees fracciones activas. Solo los Socios con tenencia de acciones pueden votar.');
+      showToast('No posees fracciones activas. Solo los Socios con tenencia de acciones pueden votar.', 'error');
       return;
     }
     setVotingId(proposalId + voteChoice);
@@ -140,9 +148,9 @@ export default function GovernanceView({ userProfile, assets }) {
       const result = await castVote({ proposalId, userId: userProfile.id, voteChoice });
       await loadProposals();
       const power = Number(result.voting_power ?? propUserPower ?? votingPower);
-      alert(`✅ Voto registrado con un poder de ${power.toFixed(4)}% de participación en este activo.`);
+      showToast(`✅ Voto registrado con un poder de ${power.toFixed(4)}% de participación en este activo.`, 'success');
     } catch (err) {
-      alert(err.message || 'Error al registrar el voto.');
+      showToast(err.message || 'Error al registrar el voto.', 'error');
     } finally {
       setVotingId(null);
     }
@@ -157,24 +165,22 @@ export default function GovernanceView({ userProfile, assets }) {
       setShowNewModal(false);
       setProposalTitle('');
       setProposalDesc('');
+      showToast('¡Propuesta creada con éxito!', 'success');
       loadProposals();
     } catch (err) {
-      alert(err.message || 'Error al crear la propuesta.');
+      showToast(err.message || 'Error al crear la propuesta.', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteProposal = async (proposalId) => {
-    if (!window.confirm('¿Estás seguro de que deseas eliminar esta propuesta durante tu ventana de gracia (5m)?')) {
-      return;
-    }
     try {
       await deleteProposal({ proposalId, userId: userProfile.id });
-      alert('Propuesta eliminada correctamente.');
+      showToast('Propuesta eliminada correctamente.', 'success');
       loadProposals();
     } catch (err) {
-      alert(err.message || 'No se pudo eliminar la propuesta.');
+      showToast(err.message || 'No se pudo eliminar la propuesta.', 'error');
     }
   };
 
@@ -191,10 +197,10 @@ export default function GovernanceView({ userProfile, assets }) {
         title: newTitle,
         description: newDesc
       });
-      alert('Propuesta actualizada correctamente.');
+      showToast('Propuesta actualizada correctamente.', 'success');
       loadProposals();
     } catch (err) {
-      alert(err.message || 'No se pudo editar la propuesta.');
+      showToast(err.message || 'No se pudo editar la propuesta.', 'error');
     }
   };
 
@@ -572,8 +578,8 @@ export default function GovernanceView({ userProfile, assets }) {
 
       {/* ── Modal Nueva Propuesta ──────────────────────────────────────── */}
       {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fade-in">
-          <div className="w-full max-w-lg p-6 bg-slate-900 border border-indigo-500/40 rounded-2xl shadow-2xl relative my-auto max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#121824] border border-[#1f2937] rounded-2xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto relative shadow-2xl">
             <button
               onClick={() => setShowNewModal(false)}
               className="absolute top-4 right-4 text-neutral-400 hover:text-white text-xl font-bold z-10"
@@ -586,7 +592,7 @@ export default function GovernanceView({ userProfile, assets }) {
             <form onSubmit={handleCreateProposalSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-neutral-300 mb-1">Activo Asociado:</label>
-                              <select
+                <select
                   value={selectedAssetId}
                   onChange={(e) => setSelectedAssetId(e.target.value)}
                   className="w-full bg-neutral-900 border border-white/15 text-white rounded-xl p-2.5 text-xs outline-none"
@@ -632,6 +638,30 @@ export default function GovernanceView({ userProfile, assets }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast de Notificación Flotante Estilo Oscuro HOLD3R ────────── */}
+      {toast.show && (
+        <div className="fixed bottom-6 right-6 z-50 animate-bounce-in max-w-md">
+          <div className={`p-4 rounded-xl shadow-2xl border backdrop-blur-md flex items-center gap-3 text-xs font-semibold ${
+            toast.type === 'error'
+              ? 'bg-rose-950/90 border-rose-500/50 text-rose-200'
+              : toast.type === 'success'
+              ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200'
+              : 'bg-neutral-900/95 border-indigo-500/40 text-neutral-200'
+          }`}>
+            {toast.type === 'error' && <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />}
+            {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
+            {toast.type === 'info' && <Bell className="w-5 h-5 text-indigo-400 shrink-0" />}
+            <span className="leading-snug">{toast.message}</span>
+            <button
+              onClick={() => setToast({ show: false, message: '', type: 'info' })}
+              className="ml-auto text-neutral-400 hover:text-white font-bold text-sm"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}
