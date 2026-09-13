@@ -1319,8 +1319,7 @@ export async function deleteProposal({ proposalId, userId }) {
     .single();
 
   if (propErr || !prop) throw new Error('Propuesta no encontrada.');
-  const creatorId = prop.user_id || prop.created_by;
-  if (creatorId && creatorId !== userId) throw new Error('Solo el creador puede eliminar la propuesta.');
+  if (prop.user_id && prop.user_id !== userId) throw new Error('Solo el creador puede eliminar la propuesta.');
 
   const createdAt = new Date(prop.created_at).getTime();
   const now = Date.now();
@@ -1356,8 +1355,7 @@ export async function updateProposal({ proposalId, userId, title, description })
     .single();
 
   if (propErr || !prop) throw new Error('Propuesta no encontrada.');
-  const creatorId = prop.user_id || prop.created_by;
-  if (creatorId && creatorId !== userId) throw new Error('Solo el creador puede editar la propuesta.');
+  if (prop.user_id && prop.user_id !== userId) throw new Error('Solo el creador puede editar la propuesta.');
 
   const createdAt = new Date(prop.created_at).getTime();
   const now = Date.now();

@@ -448,8 +448,7 @@ export default function GovernanceView({ userProfile, assets }) {
             const canVote    = isAdmin || propPower > 0;
             const isClosed   = prop.status !== 'active' || (prop.expires_at && new Date(prop.expires_at) < new Date());
             const winner     = yesPower > noPower ? 'approved' : noPower > yesPower ? 'rejected' : 'tie';
-            const creatorId  = prop.user_id || prop.created_by;
-            const isCreator  = creatorId ? creatorId === userProfile?.id : true;
+            const isCreator  = prop.user_id ? prop.user_id === userProfile?.id : true;
             const createdMs  = prop.created_at ? new Date(prop.created_at).getTime() : Date.now();
             const inGracePeriod = (Date.now() - createdMs) <= 5 * 60 * 1000;
 
